@@ -36,12 +36,12 @@ static bool solve_conjugate_directions(SparseMatrix *A, Vector *b, Vector *resul
 	// SparseVector result = {0};
 
 	// // 2, 3 
-	// SparseVector risidual = sparse_vec_sub(b, sparse_mat_mul_vec(A, result));
+	// SparseVector residual = sparse_vec_sub(b, sparse_mat_mul_vec(A, result));
 
 	// // 4
 	// SparseVector search_dir = residual;
 
-	// F64 delta = sparse_vec_dot(risidual, risidual);
+	// F64 delta = sparse_vec_dot(residual, residual);
 	// F64 tolerance = 0.01 * delta;
 
 	// U64 i_max = 1000;
@@ -56,12 +56,12 @@ static bool solve_conjugate_directions(SparseMatrix *A, Vector *b, Vector *resul
 		// result = sparse_vec_add(result, sparse_vec_scale(search_dir, step_amount));
 		// // 8, 9
 		// if ((i % ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE) == 0) {
-			// risidual = sparse_vec_sub(b, sparse_mat_mul_vec(A, x));
+			// residual = sparse_vec_sub(b, sparse_mat_mul_vec(A, x));
 		// } else {
-			// risidual = sparse_vec_sub(residual, sparse_vec_scale(q, step_amount));
+			// residual = sparse_vec_sub(residual, sparse_vec_scale(q, step_amount));
 		// }
 		// F64 delta_old = delta;
-		// delta = sparse_vec_dot(risidual, risidual);
+		// delta = sparse_vec_dot(residual, residual);
 		// F64 beta = delta_new / delta_old;
 		// // 10, 11
 		// search_dir = sparse_vec_add(residual, sparse_vec_scale(search_dir, beta));
@@ -71,63 +71,60 @@ static bool solve_conjugate_directions(SparseMatrix *A, Vector *b, Vector *resul
 // }
 
 static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result) {
-	(void)A; (void)b; (void)result;
-	assert(0 && "not implemented");
-	return false;
+	FloatPrecision precision = result->precision;
+	U64 vec_size = b->num_values;
 
-	// U64 vec_size = b.num_values;
+	Arena *scratch = arena_alloc();
 
-	// Arena scratch = arena_make_scratch();
+	// r = b - A * x
+	Vector *residual = vec_alloc(scratch, precision, vec_size);
+	sparse_mat_mul_vec(residual, A, result);
+	vec_sub(residual, b, residual);
 
-	// // r = b - A * x
-	// Vector residual = vec_alloc(scratch, vec_size);
-	// sparse_mat_mul_vec(&residual, A, result);
-	// vec_sub(&residual, b, residual);
+	Vector *search_dir = vec_copy(scratch, residual);
+	F64 delta = vec_dot(residual, residual);
+	F64 tolerance = 0.01 * delta;
 
-	// Vector search_dir = vec_copy(scratch, residual);
-	// F64 delta = vec_dot(residual, residual);
-	// F64 tolerance = 0.01 * delta;
+	U64 pos = arena_pos(scratch);
 
-	// U64 pos = arena_pos(scratch);
+	U64 i_max = 1000;
+	for (U64 i = 0; i < i_max && delta > tolerance; ++i) {
+		// q = A * search_dir
+		Vector *q = vec_alloc(scratch, precision, vec_size);
+		sparse_mat_mul_vec(q, A, search_dir);
 
-	// U64 i_max = 1000;
-	// for (U64 i = 0; i < i_max && delta > tolerance; ++i) {
-		// // q = A * search_dir
-		// Vector q = vec_alloc(scratch, vec_size);
-		// sparse_mat_mul_vec(&q, A, search_dir);
+		F64 step_amount = delta / (vec_dot(search_dir, q));
 
-		// F64 step_amount = delta / (vec_dot(search_dir, q));
-
-		// Vector tmp = vec_alloc(scratch, vec_size);
+		Vector *tmp = vec_alloc(scratch, precision, vec_size);
 		
-		// // result = result + step_amount * search_dir
-		// vec_scale(&tmp, search_dir, step_amount);
-		// vec_add(&result, result, tmp);
+		// result = result + step_amount * search_dir
+		vec_scale(tmp, search_dir, step_amount);
+		vec_add(result, result, tmp);
 
-		// if ((i % ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE) == 0) {
-			// // r = b - A * x
-			// sparse_mat_mul_vec(&tmp, A, result);
-			// vec_sub(&residual, b, tmp);
+		if ((i % ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE) == 0) {
+			// r = b - A * x
+			sparse_mat_mul_vec(tmp, A, result);
+			vec_sub(residual, b, tmp);
 
-		// } else {
-			// // r = r - step_amount * q
-			// vec_scale(&tmp, q, step_amount);
-			// vec_sub(&residual, residual, tmp);
-		// }
+		} else {
+			// r = r - step_amount * q
+			vec_scale(tmp, q, step_amount);
+			vec_sub(residual, residual, tmp);
+		}
 
-		// F64 delta_old = delta;
-		// delta = vec_dot(risidual, risidual);
-		// F64 beta = delta_new / delta_old;
+		F64 delta_old = delta;
+		delta = vec_dot(residual, residual);
+		F64 beta = delta / delta_old;
 
-		// // search_dir = residual + beta * search_dir
-		// sparse_vec_scale(&tmp, search_dir, beta);
-		// vec_add(&search_dir, residual, tmp);
+		// search_dir = residual + beta * search_dir
+		vec_scale(tmp, search_dir, beta);
+		vec_add(search_dir, residual, tmp);
 
-		// arena_pop_to(scratch, pos);
-	// }
-	// arena_clear(scratch);
+		arena_pop_to(scratch, pos);
+	}
+	arena_release(scratch);
 
-	// return result;
+	return result;
 }
 
 bool solve(SolverKind kind, SparseMatrix *A, Vector *v, Vector *result) {
@@ -157,9 +154,9 @@ int main(int argc, char **argv) {
 
 	Vector *solution = vec_alloc(arena, parse_result.vector->precision, parse_result.vector->num_values);
 
-	// if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, solution)) {
-		// fatal("Solver failed\n");
-	// }
+	if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, solution)) {
+		fatal("Solver failed\n");
+	}
 
 	vec_print(solution);
 

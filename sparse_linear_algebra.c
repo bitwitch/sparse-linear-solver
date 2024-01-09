@@ -18,20 +18,36 @@ typedef struct {
 		F32 *valuesF32;
 		F64 *valuesF64;
 	};
-	U64 *cols;
-	U64 num_values;
-	U64 total_cols; // total number of cols in vector (non-sparse)
-} SparseVector;
-
-typedef struct {
-	FloatPrecision precision;
-	union {
-		F32 *valuesF32;
-		F64 *valuesF64;
-	};
 	U64 num_values; 
 } Vector;
 
+SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
+	SparseMatrix *m = arena_alloc(arena, sizeof(SparseMatrix));
+	m->precision = precision;
+	m->num_values = num_values;
+
+	if (precision == PRECISION_F32) {
+		m->valuesF32 = arena_alloc(arena, num_values * sizeof(F32));
+	} else {
+		assert(precision == PRECISION_F64);
+		m->valuesF64 = arena_alloc(arena, num_values * sizeof(F64));
+	}
+	return v;
+}
+
+Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
+	Vector *v = arena_alloc(arena, sizeof(Vector));
+	v->precision = precision;
+	v->num_values = num_values;
+
+	if (precision == PRECISION_F32) {
+		v->valuesF32 = arena_alloc(arena, num_values * sizeof(F32));
+	} else {
+		assert(precision == PRECISION_F64);
+		v->valuesF64 = arena_alloc(arena, num_values * sizeof(F64));
+	}
+	return v;
+}
 
 Vector vec_add(Vector a, Vector b) {
 
@@ -44,6 +60,7 @@ Vector vec_sub(Vector a, Vector b) {
 F64 vec_dot(Vector a, Vector b) {
 	assert(a.precision == b.precision);
 	assert(a.num_values == b.num_values);
+
 	F64 result = 0;
 	if (a.precision == PRECISION_F32) {
 		for (U64 i=0; i<a.num_values; ++i) {
@@ -58,8 +75,10 @@ F64 vec_dot(Vector a, Vector b) {
 }
 
 Vector vec_scale(Arena *arena, Vector v, F64 scalar) {
-
+	
 }
+
+
 
 Vector sparse_mat_mul_vec(SparseMatrix m, Vector v) {
 	assert(m.precision == v.precision);

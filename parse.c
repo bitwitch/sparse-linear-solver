@@ -26,8 +26,8 @@ typedef struct {
 
 typedef struct {
 	SolverKind solver;
-	SparseMatrix matrix;
-	SparseVector vector;
+	SparseMatrix *matrix;
+	Vector *vector;
 	bool failed;
 	char *error;
 } ParseResult;
@@ -361,12 +361,12 @@ static SparseVector parse_vector(FloatPrecision format) {
 	return vector;
 }
 
-static ParseResult parse_input(char *file_name) {
+static ParseResult parse_input(Arena *arena, char *file_name) {
 	ParseResult result = {0};
 
 	char *file_data;
 	U64 file_size;
-	if (!read_entire_file(file_name, &file_data, &file_size)) {
+	if (!read_entire_file(arena, file_name, &file_data, &file_size)) {
 		result.failed = true;
 		result.error = "Failed to read input file";
 		return result;
@@ -378,8 +378,8 @@ static ParseResult parse_input(char *file_name) {
 
 	FloatPrecision format = parse_format();
 	result.solver = parse_solver();
-	result.matrix = parse_matrix(format);
-	result.vector = parse_vector(format);
+	result.matrix = parse_matrix(arena, format);
+	result.vector = parse_vector(arena, format);
 
 	return result;
 }

@@ -19,11 +19,6 @@
 
 #define ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE 1000
 
-static void vec_print(Vector *v) {
-	(void) v;
-	assert(0 && "not implemented");
-}
-
 static bool solve_steepest_descent(SparseMatrix *A, Vector *b, Vector *result) {
 	(void)A; (void)b; (void)result;
 	assert(0 && "not implemented");
@@ -158,14 +153,15 @@ int main(int argc, char **argv) {
 		fatal("Failed to parse input file: %s\n", parse_result.error);
 	}
 
+	vec_print(parse_result.vector);
+
 	Vector *solution = vec_alloc(arena, parse_result.vector->precision, parse_result.vector->num_values);
-	(void)solution;
 
 	// if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, solution)) {
 		// fatal("Solver failed\n");
 	// }
 
-	// vec_print(solution);
+	vec_print(solution);
 
 	return 0;
 }

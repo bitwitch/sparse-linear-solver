@@ -117,8 +117,8 @@ repeat:
 }
 
 static void init_parse(char *source_path, char *source) {
-	init_keywords();
 	init_str_intern();
+	init_keywords();
 	stream = source;
 	token.pos.filepath = str_intern(source_path);
 	current_line = 1;

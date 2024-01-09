@@ -21,7 +21,19 @@ typedef struct {
 	U64 num_values; 
 } Vector;
 
-SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
+static void vec_print(Vector *v) {
+	printf("{ ");
+	for (U64 i=0; i<v->num_values; ++i) {
+		if (v->precision == PRECISION_F32) {
+			printf("%g ", v->valuesF32[i]);
+		} else {
+			printf("%g ", v->valuesF64[i]);
+		}
+	}
+	printf("}\n");
+}
+
+static SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
 	SparseMatrix *m = arena_push_n(arena, SparseMatrix, 1);
 	m->precision = precision;
 	m->num_values = num_values;
@@ -38,7 +50,7 @@ SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U64 num_v
 	return m;
 }
 
-Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
+static Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
 	Vector *v = arena_push_n(arena, Vector, 1);
 	v->precision = precision;
 	v->num_values = num_values;
@@ -52,15 +64,15 @@ Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
 	return v;
 }
 
-// Vector vec_add(Vector a, Vector b) {
+// static Vector vec_add(Vector a, Vector b) {
 
 // }
 
-// Vector vec_sub(Vector a, Vector b) {
+// static Vector vec_sub(Vector a, Vector b) {
 
 // }
 
-// F64 vec_dot(Vector a, Vector b) {
+// static F64 vec_dot(Vector a, Vector b) {
 	// assert(a.precision == b.precision);
 	// assert(a.num_values == b.num_values);
 
@@ -77,13 +89,13 @@ Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
 	// return result;
 // }
 
-// Vector vec_scale(Arena *arena, Vector v, F64 scalar) {
+// static Vector vec_scale(Arena *arena, Vector v, F64 scalar) {
 	
 // }
 
 
 
-Vector sparse_mat_mul_vec(SparseMatrix m, Vector v) {
+static Vector sparse_mat_mul_vec(SparseMatrix m, Vector v) {
 	assert(m.precision == v.precision);
 
 	Vector result = {0};

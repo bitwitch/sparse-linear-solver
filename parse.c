@@ -118,6 +118,7 @@ repeat:
 
 static void init_parse(char *source_path, char *source) {
 	init_keywords();
+	init_str_intern();
 	stream = source;
 	token.pos.filepath = str_intern(source_path);
 	current_line = 1;
@@ -247,114 +248,51 @@ static SolverKind parse_solver(void) {
 	return solver;
 }
 
-static SparseMatrix parse_matrix(FloatPrecision format) {
-	SparseMatrix matrix = {0};
-	matrix.precision = format;
-
+static SparseMatrix *parse_matrix(Arena *arena, FloatPrecision format) {
 	expect_token_name("matrix");
 	expect_token(':');
+	U64 num_values = parse_int();
 
-	matrix.total_rows = parse_int();
-	matrix.total_cols = parse_int();
-
-	Token save_token = token;
-	char *save_stream = stream;
-	int save_line = current_line;
-
-	// skip over matrix to count number of values
-	while (is_token(TOKEN_INT)) {
-		next_token();
-		next_token();
-		next_token();
-		++matrix.num_values;
-	}
-
-	// reset parsing to start of matrix 
-	token = save_token;
-	stream = save_stream;
-	current_line = save_line;
-
-	// allocate space for matrix
-	if (format == PRECISION_F32) {
-		matrix.valuesF32 = xmalloc(matrix.num_values * sizeof(*matrix.valuesF32));
-	} else {
-		matrix.valuesF64 = xmalloc(matrix.num_values * sizeof(*matrix.valuesF64));
-	}
-	matrix.cols = xmalloc(matrix.num_values * sizeof(*matrix.cols));
-	matrix.rows = xmalloc(matrix.num_values * sizeof(*matrix.rows));
-	matrix.indices = xmalloc(matrix.total_rows * sizeof(*matrix.indices));
+	SparseMatrix *matrix = sparse_mat_alloc(arena, format, num_values);
 
 	// parse matrix values
-	U64 i = 0;
-	if (format == PRECISION_F32) {
-		while (is_token(TOKEN_INT)) {
-			matrix.rows[i] = parse_int();
-			matrix.cols[i] = parse_int();
-			matrix.valuesF32[i] = (F32)parse_float();
-			++i;
+	for (U64 i=0; is_token(TOKEN_INT); ++i) {
+		if (i >= num_values) {
+			fatal("Expected %llu non-zero values in sparse matrix, but more were encountered", num_values);
 		}
-	} else {
-		assert(format == PRECISION_F64);
-		while (is_token(TOKEN_INT)) {
-			matrix.rows[i] = parse_int();
-			matrix.cols[i] = parse_int();
-			matrix.valuesF64[i] = parse_float();
-			++i;
+
+		matrix->rows[i] = parse_int();
+		matrix->cols[i] = parse_int();
+
+		if (format == PRECISION_F32) {
+			matrix->valuesF32[i] = (F32)parse_float();
+		} else {
+			assert(format == PRECISION_F64);
+			matrix->valuesF64[i] = parse_float();
 		}
 	}
 
 	return matrix;
 }
 
-static SparseVector parse_vector(FloatPrecision format) {
-	SparseVector vector = {0};
-	vector.precision = format;
-
+static Vector *parse_vector(Arena *arena, FloatPrecision format) {
 	expect_token_name("vector");
 	expect_token(':');
+	U64 num_values = parse_int();
 
-	vector.total_cols = parse_int();
-
-	Token save_token = token;
-	char *save_stream = stream;
-	int save_line = current_line;
-
-	// skip over vector to count number of values
-	while (is_token(TOKEN_INT)) {
-		next_token();
-		next_token();
-		next_token();
-		++vector.num_values;
-	}
-
-	// reset parsing to start of vector
-	token = save_token;
-	stream = save_stream;
-	current_line = save_line;
-
-	// allocate space for vector
-	// TODO(shaw): look at allocation strategy
-	if (format == PRECISION_F32) {
-		vector.valuesF32 = xmalloc(vector.num_values * sizeof(*vector.valuesF32));
-	} else {
-		vector.valuesF64 = xmalloc(vector.num_values * sizeof(*vector.valuesF64));
-	}
-	vector.cols = xmalloc(vector.num_values * sizeof(*vector.cols));
+	Vector *vector = vec_alloc(arena, format, num_values);
 
 	// parse vector values
-	U64 i = 0;
-	if (format == PRECISION_F32) {
-		while (is_token(TOKEN_INT)) {
-			vector.cols[i] = parse_int();
-			vector.valuesF32[i] = (F32)parse_float();
-			++i;
+	for (U64 i=0; is_token(TOKEN_INT); ++i) {
+		if (i >= num_values) {
+			fatal("Expected %llu values in vector, but more were encountered", num_values);
 		}
-	} else {
-		assert(format == PRECISION_F64);
-		while (is_token(TOKEN_INT)) {
-			vector.cols[i] = parse_int();
-			vector.valuesF64[i] = parse_float();
-			++i;
+
+		if (format == PRECISION_F32) {
+			vector->valuesF32[i] = (F32)parse_float();
+		} else {
+			assert(format == PRECISION_F64);
+			vector->valuesF64[i] = parse_float();
 		}
 	}
 

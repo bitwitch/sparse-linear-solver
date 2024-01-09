@@ -1,8 +1,17 @@
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
+
 #define ARRAY_COUNT(a) sizeof(a)/sizeof(*(a))
 #define IS_POW2(x) (((x) != 0) && ((x) & ((x)-1)) == 0)
-#define IS_SET(bits, check) ((bits & check) == check)
+
+#define ALIGN_DOWN(n, a) ((n) & ~((a) - 1))
+#define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a) - 1, (a))
+#define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
+#define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
+
+#define KILOBYTE (1024)
+#define MEGABYTE (1024 * KILOBYTE)
+#define GIGABYTE (1024 * MEGABYTE)
 
 typedef uint8_t  U8;
 typedef uint16_t U16;
@@ -27,19 +36,6 @@ typedef enum {
 	SOLVER_CONJUGATE_DIRECTIONS,
 	SOLVER_CONJUGATE_GRADIENTS,
 } SolverKind;
-
-// ---------------------------------------------------------------------------
-// OS Specific Functions
-// ---------------------------------------------------------------------------
-#if _WIN32
-U64 os_file_size(char *filepath) {
-	struct __stat64 stat = {0};
-	_stat64(filepath, &stat);
-	return stat.st_size;
-}
-#else
-#error os_file_size not defined on this platform
-#endif
 
 // ---------------------------------------------------------------------------
 // Helper Utilities
@@ -79,33 +75,6 @@ void fatal(char *fmt, ...) {
     printf("\n");
     va_end(args);
     exit(1);
-}
-
-bool read_entire_file(char *file_path, char **file_data, U64 *out_size) {
-	FILE *f = fopen(file_path, "rb");
-	if (!f) {
-		return false;
-	}
-
-	U64 file_size = os_file_size(file_path);
-
-	*out_size = file_size + 1;
-	*file_data = xmalloc(*out_size);
-	if (!*file_data) {
-		fclose(f);
-		return false;
-	}
-
-	U64 bytes_read = fread(*file_data, 1, file_size, f);
-	if (bytes_read < file_size && !feof(f)) {
-		fclose(f);
-		return false;
-	}
-
-	(*file_data)[bytes_read] = 0; // add null terminator
-	fclose(f);
-
-	return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,51 +122,136 @@ void *buf__grow(void *buf, size_t new_len, size_t elem_size) {
 }
 
 // ---------------------------------------------------------------------------
-// Simple Chaining Arena Allocator
+// Arena Allocator
 // ---------------------------------------------------------------------------
-#define ARENA_BLOCK_SIZE 65536
+
+#define ARENA_RESERVE_SIZE (64LLU * GIGABYTE)
 
 typedef struct {
-    char *ptr;
-    char *end;
-    BUF(char **blocks);
+	U64 cursor;
+	U64 cap;
+	U64 committed;
+	U64 page_size;
 } Arena;
 
-void arena_grow(Arena *arena, size_t min_size) {
-    size_t size = MAX(ARENA_BLOCK_SIZE, min_size);
-    arena->ptr = xmalloc(size);
-    arena->end = arena->ptr + size;
-    buf_push(arena->blocks, arena->ptr);
+Arena *arena_alloc(void) {
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	U64 page_size = system_info.dwPageSize;
+	
+	Arena *reserved = VirtualAlloc(0, ARENA_RESERVE_SIZE, MEM_RESERVE, PAGE_NOACCESS);
+	if (!reserved) return NULL;
+
+	Arena *arena = VirtualAlloc(reserved, page_size, MEM_COMMIT, PAGE_READWRITE);
+	if (!arena) {
+		VirtualFree(reserved, 0, MEM_RELEASE);
+		return NULL;
+	}
+
+	arena->cursor = sizeof(Arena);
+	arena->cap = ARENA_RESERVE_SIZE;
+	arena->committed = page_size;
+	arena->page_size = page_size;
+
+	return arena;
 }
 
-void *arena_alloc(Arena *arena, size_t size) {
-    if (arena->ptr + size > arena->end) {
-        arena_grow(arena, size); 
-    }
-    void *ptr = arena->ptr;
-    arena->ptr += size;
-    return ptr;
+U64 arena_pos(Arena *arena) {
+	return arena->cursor;
 }
 
-void *arena_alloc_zeroed(Arena *arena, size_t size) {
-    void *ptr = arena_alloc(arena, size);
-    memset(ptr, 0, size);
-    return ptr;
+void arena_pop_to(Arena *arena, U64 pos) {
+	U64 to_decommit = arena->committed - MAX(pos, arena->page_size);
+	VirtualFree((U8*)arena + arena->page_size, to_decommit, MEM_DECOMMIT);
+	arena->committed -= to_decommit;
+	arena->cursor = MAX(pos, sizeof(Arena));
 }
 
-void arena_free(Arena *arena) {
-    for (int i=0; i<buf_len(arena->blocks); ++i) {
-        free(arena->blocks[i]);
-    }
-    buf_free(arena->blocks);
+void arena_clear(Arena *arena) {
+	U64 to_decommit = arena->committed - arena->page_size;
+	VirtualFree((U8*)arena + arena->page_size, to_decommit, MEM_DECOMMIT);
+	arena->committed -= to_decommit;
+	arena->cursor = sizeof(Arena);
 }
 
-void *arena_memdup(Arena *arena, void *src, size_t size) {
-    if (size == 0) return NULL;
-    void *new_mem = arena_alloc(arena, size);
-    memcpy(new_mem, src, size);
-    return new_mem;
+void arena_release(Arena *arena) {
+	if (arena) {
+		VirtualFree(arena, 0, MEM_RELEASE);
+	}
 }
+
+void *arena_push(Arena *arena, U64 size, U64 alignment, bool zero) {
+
+	void *start = (U8*)arena + arena->cursor;
+	void *start_aligned = ALIGN_UP_PTR(start, alignment);
+	U64 pad_bytes = (U64)start_aligned - (U64)start;
+	size += pad_bytes;
+
+	// commit more memory if needed
+	if (arena->cursor + size >= arena->committed) {
+		U64 to_commit = ALIGN_UP(arena->cursor + size, arena->page_size);
+		void *ok = VirtualAlloc(arena, to_commit, MEM_COMMIT, PAGE_READWRITE);
+		assert(ok);
+		arena->committed = to_commit;
+	}
+
+	if (zero) {
+		memset((U8*)arena + arena->cursor, 0, size);
+	}
+
+	arena->cursor += size;
+	return start_aligned;
+}
+#define arena_push_n(arena, type, count) (type*)(arena_push(arena, sizeof(type)*count, _Alignof(type), true))
+#define arena_push_n_no_zero(arena, type, count) (type*)(arena_push(arena, sizeof(type)*count, _Alignof(type), false))
+
+
+// ---------------------------------------------------------------------------
+// Simple Chaining Arena Allocator
+// ---------------------------------------------------------------------------
+// #define ARENA_BLOCK_SIZE 65536
+
+// typedef struct {
+    // char *ptr;
+    // char *end;
+    // BUF(char **blocks);
+// } Arena;
+
+// void arena_grow(Arena *arena, size_t min_size) {
+    // size_t size = MAX(ARENA_BLOCK_SIZE, min_size);
+    // arena->ptr = xmalloc(size);
+    // arena->end = arena->ptr + size;
+    // buf_push(arena->blocks, arena->ptr);
+// }
+
+// void *arena_alloc_no_zero(Arena *arena, size_t size) {
+    // if (arena->ptr + size > arena->end) {
+        // arena_grow(arena, size); 
+    // }
+    // void *ptr = arena->ptr;
+    // arena->ptr += size;
+    // return ptr;
+// }
+
+// void *arena_alloc(Arena *arena, size_t size) {
+    // void *ptr = arena_alloc_no_zero(arena, size);
+    // memset(ptr, 0, size);
+    // return ptr;
+// }
+
+// void arena_free(Arena *arena) {
+    // for (int i=0; i<buf_len(arena->blocks); ++i) {
+        // free(arena->blocks[i]);
+    // }
+    // buf_free(arena->blocks);
+// }
+
+// void *arena_memdup(Arena *arena, void *src, size_t size) {
+    // if (size == 0) return NULL;
+    // void *new_mem = arena_alloc(arena, size);
+    // memcpy(new_mem, src, size);
+    // return new_mem;
+// }
 
 // ---------------------------------------------------------------------------
 // Hash Map
@@ -327,8 +381,16 @@ struct InternStr {
     char str[];
 };
 
-static Arena intern_arena;
+static Arena *intern_arena;
 static Map interns;
+
+void init_str_intern(void) {
+	static bool first = true;
+	if (first) {
+		intern_arena = arena_alloc();
+		first = false;
+	}
+}
 
 char *str_intern_range(char *start, char *end) {
 	size_t len = end - start;
@@ -344,7 +406,7 @@ char *str_intern_range(char *start, char *end) {
 		} 
 	}
 
-	InternStr *new_intern = arena_alloc(&intern_arena, offsetof(InternStr, str) + len + 1);
+	InternStr *new_intern = arena_push(intern_arena, offsetof(InternStr, str) + len + 1, 1, true);
 	new_intern->len = len;
 	new_intern->next = intern;
 	memcpy(new_intern->str, start, len);
@@ -356,3 +418,37 @@ char *str_intern_range(char *start, char *end) {
 char *str_intern(char *str) {
     return str_intern_range(str, str + strlen(str));
 }
+
+
+// ---------------------------------------------------------------------------
+// File I/O
+// ---------------------------------------------------------------------------
+bool read_entire_file(Arena *arena, char *file_path, char **file_data, U64 *out_size) {
+	FILE *f = fopen(file_path, "rb");
+	if (!f) {
+		return false;
+	}
+
+	struct __stat64 stat = {0};
+	_stat64(file_path, &stat);
+	U64 file_size = stat.st_size;
+
+	*out_size = file_size + 1;
+	*file_data = arena_push_n(arena, char, *out_size);
+	if (!*file_data) {
+		fclose(f);
+		return false;
+	}
+
+	U64 bytes_read = fread(*file_data, 1, file_size, f);
+	if (bytes_read < file_size && !feof(f)) {
+		fclose(f);
+		return false;
+	}
+
+	(*file_data)[bytes_read] = 0; // add null terminator
+	fclose(f);
+
+	return true;
+}
+

@@ -283,7 +283,7 @@ static Vector *parse_vector(Arena *arena, FloatPrecision format) {
 	Vector *vector = vec_alloc(arena, format, num_values);
 
 	// parse vector values
-	for (U64 i=0; is_token(TOKEN_INT); ++i) {
+	for (U64 i=0; is_token(TOKEN_INT) || is_token(TOKEN_FLOAT); ++i) {
 		if (i >= num_values) {
 			fatal("Expected %llu values in vector, but more were encountered", num_values);
 		}

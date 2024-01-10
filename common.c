@@ -205,54 +205,6 @@ void *arena_push(Arena *arena, U64 size, U64 alignment, bool zero) {
 #define arena_push_n(arena, type, count) (type*)(arena_push(arena, sizeof(type)*count, _Alignof(type), true))
 #define arena_push_n_no_zero(arena, type, count) (type*)(arena_push(arena, sizeof(type)*count, _Alignof(type), false))
 
-
-// ---------------------------------------------------------------------------
-// Simple Chaining Arena Allocator
-// ---------------------------------------------------------------------------
-// #define ARENA_BLOCK_SIZE 65536
-
-// typedef struct {
-    // char *ptr;
-    // char *end;
-    // BUF(char **blocks);
-// } Arena;
-
-// void arena_grow(Arena *arena, size_t min_size) {
-    // size_t size = MAX(ARENA_BLOCK_SIZE, min_size);
-    // arena->ptr = xmalloc(size);
-    // arena->end = arena->ptr + size;
-    // buf_push(arena->blocks, arena->ptr);
-// }
-
-// void *arena_alloc_no_zero(Arena *arena, size_t size) {
-    // if (arena->ptr + size > arena->end) {
-        // arena_grow(arena, size); 
-    // }
-    // void *ptr = arena->ptr;
-    // arena->ptr += size;
-    // return ptr;
-// }
-
-// void *arena_alloc(Arena *arena, size_t size) {
-    // void *ptr = arena_alloc_no_zero(arena, size);
-    // memset(ptr, 0, size);
-    // return ptr;
-// }
-
-// void arena_free(Arena *arena) {
-    // for (int i=0; i<buf_len(arena->blocks); ++i) {
-        // free(arena->blocks[i]);
-    // }
-    // buf_free(arena->blocks);
-// }
-
-// void *arena_memdup(Arena *arena, void *src, size_t size) {
-    // if (size == 0) return NULL;
-    // void *new_mem = arena_alloc(arena, size);
-    // memcpy(new_mem, src, size);
-    // return new_mem;
-// }
-
 // ---------------------------------------------------------------------------
 // Hash Map
 // ---------------------------------------------------------------------------

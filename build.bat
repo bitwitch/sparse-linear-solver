@@ -1,5 +1,10 @@
 @echo off
 if not exist build\ mkdir build
 pushd build
-cl /W4 /wd4200 /WX /nologo /Zi /fsanitize=address /std:c11 /Felinear_solver.exe "%~dp0main.c"
+
+if "%1" == "test" (
+	cl /W4 /wd4200 /WX /nologo /Zi /fsanitize=address /std:c11 "%~dp0test_linear_algebra.c"
+) else (
+	cl /W4 /wd4200 /WX /nologo /Zi /fsanitize=address /std:c11 /Felinear_solver.exe "%~dp0main.c"
+)
 popd

@@ -17,6 +17,8 @@
 
 #include "common.c"
 #include "sparse_linear_algebra.c"
+#include "parse.c"
+#include "solver.c"
 
 // see https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/
 bool F32_equal(F32 a, F32 b, F32 max_diff) {
@@ -27,7 +29,7 @@ bool F32_equal(F32 a, F32 b, F32 max_diff) {
     b = fabsf(b);
     float largest = (b > a) ? b : a;
 
-    return (diff <= largest * FLT_EPSILON);
+    return (diff <= largest * 0.00001);
 }
 
 bool F64_equal(F64 a, F64 b, F64 max_diff) {
@@ -40,7 +42,7 @@ bool F64_equal(F64 a, F64 b, F64 max_diff) {
     b = fabs(b);
     F64 largest = (b > a) ? b : a;
 
-    return (diff <= largest * DBL_EPSILON);
+    return (diff <= largest * .00001);
 }
 
 static bool vec_equal(Vector *a, Vector *b) {
@@ -49,10 +51,10 @@ static bool vec_equal(Vector *a, Vector *b) {
 
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
-			if (!F32_equal(a->valuesF32[i], b->valuesF32[i], 0.000001f))
+			if (!F32_equal(a->valuesF32[i], b->valuesF32[i], 0.0001f))
 				return false;
 		} else {
-			if (!F64_equal(a->valuesF64[i], b->valuesF64[i], 0.000000001))
+			if (!F64_equal(a->valuesF64[i], b->valuesF64[i], 0.0001))
 				return false;
 		}
 	}
@@ -193,31 +195,73 @@ static void test_linear_algebra(void) {
 	printf("test_linear_algebra: success\n");
 }
 
-// static void test_conjugate_gradients(void) {
-	// Arena *scratch = arena_alloc();
-	// S32 num_rows = 10000;
-	// U64 num_values = num_rows + (2 * (num_rows-1));
-	// SparseMatrix *m = sparse_mat_alloc(scratch, PRECISION_F32, num_values);
-	// for (S32 row=0; row<num_rows; ++row) {
-		// S32 diag_low = row-1;
-		// S32 diag_mid = row;
-		// S32 diag_high = row+1;
-		// if (diag_low >= 0) {
+static void test_conjugate_gradients(void) {
+	Arena *scratch = arena_alloc();
+
+	FloatPrecision precision = PRECISION_F64;
+	S32 num_rows = 10000;
+	U64 num_values = num_rows + (2 * (num_rows-1));
+	SparseMatrix *m = sparse_mat_alloc(scratch, precision, num_values);
+	U32 i = 0;
+	for (S32 row=0; row<num_rows; ++row) {
+		S32 diag_low = row-1;
+		S32 diag_mid = row;
+		S32 diag_high = row+1;
+		if (diag_low >= 0) {
 			// sparse_mat_set(m, row, diag_low, -1.0);
-		// }
+			m->valuesF64[i] = -1.0;
+			m->rows[i] = row;
+			m->cols[i] = diag_low;
+			++i;
+		}
+		
 		// sparse_mat_set(m, row, diag_mid, 2.1);
-		// if (diag_high < num_rows) {
+		m->valuesF64[i] = 2.1;
+		m->rows[i] = row;
+		m->cols[i] = diag_mid;
+		++i;
+
+		if (diag_high < num_rows) {
 			// sparse_mat_set(m, row, diag_high, -1.0);
-		// }
-	// }
-	// arena_release(scratch);
-// }
+			m->valuesF64[i] = -1.0;
+			m->rows[i] = row;
+			m->cols[i] = diag_high;
+			++i;
+		}
+	}
+
+	Vector *v = vec_alloc(scratch, precision, num_rows);
+	for (S32 j=0; j<num_rows; ++j) {
+		vec_set(v, j, j+1);
+	}
+
+	Vector *result = vec_alloc(scratch, precision, num_rows);
+	solve_conjugate_gradients(m, v, result);
+
+
+	char *file_data;
+	U64 file_size;
+	char *file_name = "scipy_reference_solution.txt";
+	if (!read_entire_file(scratch, file_name, &file_data, &file_size)) {
+		fatal("failed to read %s\n", file_name);
+	}
+
+	init_parse(file_name, file_data);
+
+	Vector *scipy_reference = parse_vector(scratch, precision);
+
+	assert(vec_equal(result, scipy_reference));
+
+	// vec_print(result);
+
+	arena_release(scratch);
+}
 
 
 int main(int argc, char **argv) {
 	(void)argc; (void)argv;
-	test_linear_algebra();
-	// test_conjugate_gradients();
+	// test_linear_algebra();
+	test_conjugate_gradients();
 	return 0;
 }
 

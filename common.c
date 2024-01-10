@@ -161,17 +161,17 @@ U64 arena_pos(Arena *arena) {
 }
 
 void arena_pop_to(Arena *arena, U64 pos) {
-	U64 to_decommit = arena->committed - MAX(pos, arena->page_size);
-	VirtualFree((U8*)arena + arena->page_size, to_decommit, MEM_DECOMMIT);
-	arena->committed -= to_decommit;
+	U64 pos_aligned_to_page_size = ALIGN_UP(pos, arena->page_size);
+	U64 to_decommit = arena->committed - pos_aligned_to_page_size;
+	if (to_decommit > 0) {
+		VirtualFree((U8*)arena + pos_aligned_to_page_size, to_decommit, MEM_DECOMMIT);
+		arena->committed -= to_decommit;
+	}
 	arena->cursor = MAX(pos, sizeof(Arena));
 }
 
 void arena_clear(Arena *arena) {
-	U64 to_decommit = arena->committed - arena->page_size;
-	VirtualFree((U8*)arena + arena->page_size, to_decommit, MEM_DECOMMIT);
-	arena->committed -= to_decommit;
-	arena->cursor = sizeof(Arena);
+	arena_pop_to(arena, sizeof(Arena));
 }
 
 void arena_release(Arena *arena) {
@@ -181,7 +181,6 @@ void arena_release(Arena *arena) {
 }
 
 void *arena_push(Arena *arena, U64 size, U64 alignment, bool zero) {
-
 	void *start = (U8*)arena + arena->cursor;
 	void *start_aligned = ALIGN_UP_PTR(start, alignment);
 	U64 pad_bytes = (U64)start_aligned - (U64)start;

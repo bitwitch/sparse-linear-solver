@@ -124,15 +124,19 @@ void *buf__grow(void *buf, size_t new_len, size_t elem_size) {
 // ---------------------------------------------------------------------------
 // Arena Allocator
 // ---------------------------------------------------------------------------
-
-#define ARENA_RESERVE_SIZE (64LLU * GIGABYTE)
+#define ARENA_RESERVE_SIZE (8LLU * GIGABYTE)
 
 typedef struct {
-	U64 cursor;
+	U64 pos;
 	U64 cap;
 	U64 committed;
 	U64 page_size;
 } Arena;
+
+typedef struct {
+	Arena *arena;
+	U64 pos;
+} ArenaTemp;
 
 Arena *arena_alloc(void) {
 	SYSTEM_INFO system_info;
@@ -148,7 +152,7 @@ Arena *arena_alloc(void) {
 		return NULL;
 	}
 
-	arena->cursor = sizeof(Arena);
+	arena->pos = sizeof(Arena);
 	arena->cap = ARENA_RESERVE_SIZE;
 	arena->committed = page_size;
 	arena->page_size = page_size;
@@ -157,7 +161,7 @@ Arena *arena_alloc(void) {
 }
 
 U64 arena_pos(Arena *arena) {
-	return arena->cursor;
+	return arena->pos;
 }
 
 void arena_pop_to(Arena *arena, U64 pos) {
@@ -167,7 +171,7 @@ void arena_pop_to(Arena *arena, U64 pos) {
 		VirtualFree((U8*)arena + pos_aligned_to_page_size, to_decommit, MEM_DECOMMIT);
 		arena->committed -= to_decommit;
 	}
-	arena->cursor = MAX(pos, sizeof(Arena));
+	arena->pos = MAX(pos, sizeof(Arena));
 }
 
 void arena_clear(Arena *arena) {
@@ -181,28 +185,61 @@ void arena_release(Arena *arena) {
 }
 
 void *arena_push(Arena *arena, U64 size, U64 alignment, bool zero) {
-	void *start = (U8*)arena + arena->cursor;
+	void *start = (U8*)arena + arena->pos;
 	void *start_aligned = ALIGN_UP_PTR(start, alignment);
 	U64 pad_bytes = (U64)start_aligned - (U64)start;
 	size += pad_bytes;
 
 	// commit more memory if needed
-	if (arena->cursor + size >= arena->committed) {
-		U64 to_commit = ALIGN_UP(arena->cursor + size, arena->page_size);
+	if (arena->pos + size >= arena->committed) {
+		U64 to_commit = ALIGN_UP(arena->pos + size, arena->page_size);
 		void *ok = VirtualAlloc(arena, to_commit, MEM_COMMIT, PAGE_READWRITE);
 		assert(ok);
 		arena->committed = to_commit;
 	}
 
 	if (zero) {
-		memset((U8*)arena + arena->cursor, 0, size);
+		memset((U8*)arena + arena->pos, 0, size);
 	}
 
-	arena->cursor += size;
+	arena->pos += size;
 	return start_aligned;
 }
 #define arena_push_n(arena, type, count) (type*)(arena_push(arena, sizeof(type)*count, _Alignof(type), true))
 #define arena_push_n_no_zero(arena, type, count) (type*)(arena_push(arena, sizeof(type)*count, _Alignof(type), false))
+
+// TODO(shaw): in a multi-threaded environment there should be thread local
+// scratch arenas
+static Arena *global_scratch_arenas[2];
+
+void init_scratch(void) {
+	for (U64 i=0; i<ARRAY_COUNT(global_scratch_arenas); ++i) {
+		global_scratch_arenas[i] = arena_alloc();
+	}
+}
+
+ArenaTemp scratch_begin(Arena **conflicts, U64 conflict_count) {
+	ArenaTemp scratch = {0};
+	for (U64 j=0; j<ARRAY_COUNT(global_scratch_arenas); ++j) {
+		bool scratch_conflicts = false;
+		for (U64 i=0; i<conflict_count; ++i) {
+			if (conflicts[i] == global_scratch_arenas[j]) {
+				scratch_conflicts = true;
+				break;
+			}	
+		}
+		if (!scratch_conflicts) {
+			scratch.arena = global_scratch_arenas[j];
+			scratch.pos = scratch.arena->pos;
+			break;
+		}
+	}
+	return scratch;
+}
+
+void scratch_end(ArenaTemp scratch) {
+	arena_pop_to(scratch.arena, scratch.pos);
+}
 
 // ---------------------------------------------------------------------------
 // Hash Map
@@ -312,11 +349,11 @@ void map_clear(Map *map) {
 
 void map_test(void) {
 	Map map = {0};
-	enum { N = 1024 * 1024 };
-	for (size_t i=0; i<N; ++i) {
+	enum { n = 1024 * 1024 };
+	for (size_t i=0; i<n; ++i) {
 		map_put(&map, (void*)(i+1), (void*)(i+2));
 	}
-	for (size_t i=0; i<N; ++i) {
+	for (size_t i=0; i<n; ++i) {
 		assert(map_get(&map, (void*)(i+1)) == (void*)(i+2));
 	}
 }

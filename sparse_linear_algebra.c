@@ -24,6 +24,7 @@ static void vec_print(Vector *v) {
 		if (v->precision == PRECISION_F32) {
 			printf("%g ", v->valuesF32[i]);
 		} else {
+			assert(v->precision == PRECISION_F64);
 			printf("%g ", v->valuesF64[i]);
 		}
 	}
@@ -49,6 +50,7 @@ static Vector *vec_copy(Arena *arena, Vector *v) {
 	if (v->precision == PRECISION_F32) {
 		memcpy(result->valuesF32, v->valuesF32, v->num_values * sizeof(*v->valuesF32));
 	} else {
+		assert(v->precision == PRECISION_F64);
 		memcpy(result->valuesF64, v->valuesF64, v->num_values * sizeof(*v->valuesF64));
 	}
 	return result;
@@ -58,47 +60,73 @@ static void vec_zero(Vector *v) {
 	if (v->precision == PRECISION_F32) {
 		memset(v->valuesF32, 0, v->num_values * sizeof(*v->valuesF32));
 	} else {
+		assert(v->precision == PRECISION_F64);
 		memset(v->valuesF64, 0, v->num_values * sizeof(*v->valuesF64));
 	}
 }
 
 static void vec_set(Vector *v, U64 index, F64 value) {
+	if (index >= v->num_values) {
+		fatal("vec_set: index (%llu) is greater than the size of the vector (%llu)", index, v->num_values);
+	}
+
 	if (v->precision == PRECISION_F32) {
 		v->valuesF32[index] = (F32)value;
 	} else {
+		assert(v->precision == PRECISION_F64);
 		v->valuesF64[index] = value;
 	}
 }
 
+static void check_vector_arguments(char *prefix, Vector *result, Vector *a, Vector *b) {
+	if (a->precision != b->precision || a->precision != result->precision) {
+		fatal("%s: vector arguments have different float precision", prefix);
+	}
+	if (a->num_values != b->num_values || a->num_values != result->num_values) {
+		fatal("%s: vector arguments have different sizes: result=%llu, a=%llu, b=%llu",
+			prefix, result->num_values, a->num_values, b->num_values);
+	}
+}
+
 static void vec_add(Vector *result, Vector *a, Vector *b) {
+	check_vector_arguments("vec_add", result, a, b);
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
 			result->valuesF32[i] = a->valuesF32[i] + b->valuesF32[i];
 		} else {
+			assert(a->precision == PRECISION_F64);
 			result->valuesF64[i] = a->valuesF64[i] + b->valuesF64[i];
 		}
 	}
 }
 
 static void vec_sub(Vector *result, Vector *a, Vector *b) {
+	check_vector_arguments("vec_sub", result, a, b);
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
 			result->valuesF32[i] = a->valuesF32[i] - b->valuesF32[i];
 		} else {
+			assert(a->precision == PRECISION_F64);
 			result->valuesF64[i] = a->valuesF64[i] - b->valuesF64[i];
 		}
 	}
 }
 
 static F64 vec_dot(Vector *a, Vector *b) {
-	assert(a->precision == b->precision);
-	assert(a->num_values == b->num_values);
+	if (a->precision != b->precision) {
+		fatal("vec_dot: vector arguments have different float precision");
+	}
+	if (a->num_values != b->num_values) {
+		fatal("vec_dot: vector arguments have different sizes: a=%llu, b=%llu",
+			a->num_values, b->num_values);
+	}
 
 	F64 result = 0;
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
 			result += (F64)a->valuesF32[i] * (F64)b->valuesF32[i];
 		} else {
+			assert(a->precision == PRECISION_F64);
 			result += a->valuesF64[i] * b->valuesF64[i];
 		}
 	}
@@ -107,10 +135,19 @@ static F64 vec_dot(Vector *a, Vector *b) {
 }
 
 static void vec_scale(Vector *result, Vector *v, F64 scalar) {
+	if (result->precision != v->precision) {
+		fatal("vec_scale: vector arguments have different float precision");
+	}
+	if (result->num_values != v->num_values) {
+		fatal("vec_scale: vector arguments have different sizes: result=%llu, v=%llu",
+			result->num_values, v->num_values);
+	}
+
 	for (U64 i=0; i < v->num_values; ++i) {
 		if (v->precision == PRECISION_F32) {
 			result->valuesF32[i] = v->valuesF32[i] * (F32)scalar;
 		} else {
+			assert(v->precision == PRECISION_F64);
 			result->valuesF64[i] = v->valuesF64[i] * scalar;
 		}
 	}
@@ -133,15 +170,21 @@ static SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U6
 	return m;
 }
 
-// TODO(shaw): handle case where v and result alias
-// since you can't reliably know when this is true, will have to always copy
-// result into a tmp vector, perform computations then copy data back to result
 static void sparse_mat_mul_vec(Vector *result, SparseMatrix *m, Vector *v) {
-	assert(m->precision == v->precision);
-	assert(m->precision == result->precision);
-	assert(v->num_values == result->num_values);
+	if (m->precision != v->precision || v->precision != result->precision) {
+		fatal("sparse_mat_mul_vec: arguments have different float precision");
+	}
+	if (v->num_values != result->num_values) {
+		fatal("sparse_mat_mul_vec: vector arguments have different sizes: result=%llu, v=%llu",
+			result->num_values, v->num_values);
+	}
 
-	vec_zero(result);
+	// NOTE(shaw): result and v could alias and values are accumulated into
+	// result and assume it starts zeroed. this means we have to allocate a
+	// temporary vector to accumulate values into and then copy them out to
+	// result at the end
+	ArenaTemp scratch = scratch_begin(NULL, 0);
+	Vector *tmp = vec_alloc(scratch.arena, result->precision, result->num_values);
 
 	for (U64 i=0; i<m->num_values; ++i) {
 		U64 row = m->rows[i];
@@ -151,11 +194,20 @@ static void sparse_mat_mul_vec(Vector *result, SparseMatrix *m, Vector *v) {
 		assert(row < result->num_values);
 
 		if (result->precision == PRECISION_F32) {
-			result->valuesF32[row] += v->valuesF32[v_index] * m->valuesF32[i];
+			tmp->valuesF32[row] += v->valuesF32[v_index] * m->valuesF32[i];
 		} else {
-			result->valuesF64[row] += v->valuesF64[v_index] * m->valuesF64[i];
+			tmp->valuesF64[row] += v->valuesF64[v_index] * m->valuesF64[i];
 		}
 	}
+
+	if (result->precision == PRECISION_F32) {
+		memcpy(result->valuesF32, tmp->valuesF32, sizeof(F32) * tmp->num_values);
+	} else {
+		assert(result->precision == PRECISION_F64);
+		memcpy(result->valuesF64, tmp->valuesF64, sizeof(F64) * tmp->num_values);
+	}
+
+	scratch_end(scratch);
 }
 
 

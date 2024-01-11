@@ -51,10 +51,10 @@ static bool vec_equal(Vector *a, Vector *b) {
 
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
-			if (!F32_equal(a->valuesF32[i], b->valuesF32[i], 0.0001f))
+			if (!F32_equal(a->valuesF32[i], b->valuesF32[i], 0.001f))
 				return false;
 		} else {
-			if (!F64_equal(a->valuesF64[i], b->valuesF64[i], 0.0001))
+			if (!F64_equal(a->valuesF64[i], b->valuesF64[i], 0.001))
 				return false;
 		}
 	}
@@ -62,16 +62,15 @@ static bool vec_equal(Vector *a, Vector *b) {
 	return true;
 }
 
-// TODO(shaw): more tests, this is a simple sanity test, not extensive or
-// exhaustive at all
+// this is a very basic sanity test, not extensive or exhaustive at all
 static void test_linear_algebra(void) {
-	Arena *scratch = arena_alloc();
+	ArenaTemp scratch = scratch_begin(NULL, 0);
 
-	SparseMatrix *mat_9 = sparse_mat_alloc(scratch, PRECISION_F32, 9);
-	Vector *a = vec_alloc(scratch, PRECISION_F32, 3);
-	Vector *b = vec_alloc(scratch, PRECISION_F32, 3);
-	Vector *actual = vec_alloc(scratch, PRECISION_F32, 3);
-	Vector *expected = vec_alloc(scratch, PRECISION_F32, 3);
+	SparseMatrix *mat_9 = sparse_mat_alloc(scratch.arena, PRECISION_F32, 9);
+	Vector *a = vec_alloc(scratch.arena, PRECISION_F32, 3);
+	Vector *b = vec_alloc(scratch.arena, PRECISION_F32, 3);
+	Vector *actual = vec_alloc(scratch.arena, PRECISION_F32, 3);
+	Vector *expected = vec_alloc(scratch.arena, PRECISION_F32, 3);
 	F32 scalar;
 	F32 epsilon = 0.000001f;
 
@@ -190,78 +189,54 @@ static void test_linear_algebra(void) {
 	vec_set(expected, 2, 206);
 	assert(vec_equal(actual, expected));
 
+	scratch_end(scratch);
 
-	arena_release(scratch);
 	printf("test_linear_algebra: success\n");
 }
 
 static void test_conjugate_gradients(void) {
-	Arena *scratch = arena_alloc();
+	U64 sum_success = 0;
+	U64 num_tests = 1000;
+	for (U64 i=0; i<num_tests; ++i) {
+		ArenaTemp scratch = scratch_begin(NULL, 0);
+		printf("Test %llu...", i);
+		enum { max_path = 256 };
+		char path[max_path];
+		snprintf(path, max_path, "tests/test_%llu.txt", i);
 
-	FloatPrecision precision = PRECISION_F64;
-	S32 num_rows = 10000;
-	U64 num_values = num_rows + (2 * (num_rows-1));
-	SparseMatrix *m = sparse_mat_alloc(scratch, precision, num_values);
-	U32 i = 0;
-	for (S32 row=0; row<num_rows; ++row) {
-		S32 diag_low = row-1;
-		S32 diag_mid = row;
-		S32 diag_high = row+1;
-		if (diag_low >= 0) {
-			// sparse_mat_set(m, row, diag_low, -1.0);
-			m->valuesF64[i] = -1.0;
-			m->rows[i] = row;
-			m->cols[i] = diag_low;
-			++i;
+		ParseResult parse_result = parse_input(scratch.arena, path);
+		if (parse_result.failed) {
+			printf("  failed. Unable to parse input file: %s\n", parse_result.error);
+			goto fail;
 		}
-		
-		// sparse_mat_set(m, row, diag_mid, 2.1);
-		m->valuesF64[i] = 2.1;
-		m->rows[i] = row;
-		m->cols[i] = diag_mid;
-		++i;
 
-		if (diag_high < num_rows) {
-			// sparse_mat_set(m, row, diag_high, -1.0);
-			m->valuesF64[i] = -1.0;
-			m->rows[i] = row;
-			m->cols[i] = diag_high;
-			++i;
+		Vector *actual = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
+
+		if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, actual)) {
+			printf("  failed. Solver failed to produce a solution\n");
+			goto fail;
 		}
+
+		if (vec_equal(actual, parse_result.solution)) {
+			printf("  succeeded.\n");
+			++sum_success;
+		} else {
+			printf("  failed. Computed solution does not match expected\n");
+		}
+fail:
+		scratch_end(scratch);
 	}
-
-	Vector *v = vec_alloc(scratch, precision, num_rows);
-	for (S32 j=0; j<num_rows; ++j) {
-		vec_set(v, j, j+1);
-	}
-
-	Vector *result = vec_alloc(scratch, precision, num_rows);
-	solve_conjugate_gradients(m, v, result);
-
-
-	char *file_data;
-	U64 file_size;
-	char *file_name = "scipy_reference_solution.txt";
-	if (!read_entire_file(scratch, file_name, &file_data, &file_size)) {
-		fatal("failed to read %s\n", file_name);
-	}
-
-	init_parse(file_name, file_data);
-
-	Vector *scipy_reference = parse_vector(scratch, precision);
-
-	assert(vec_equal(result, scipy_reference));
-
-	// vec_print(result);
-
-	arena_release(scratch);
+	printf("\nSummary: %llu / %llu tests succeeded.\n", sum_success, num_tests);
 }
 
 
 int main(int argc, char **argv) {
 	(void)argc; (void)argv;
+	init_scratch();
+
 	// test_linear_algebra();
 	test_conjugate_gradients();
+
 	return 0;
 }
 

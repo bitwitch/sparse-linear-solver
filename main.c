@@ -27,20 +27,23 @@ int main(int argc, char **argv) {
 	}
 	char *filename = argv[1];
 
-	Arena *arena = arena_alloc();
+	init_scratch();
+	ArenaTemp scratch = scratch_begin(NULL, 0);
 	
-	ParseResult parse_result = parse_input(arena, filename);
+	ParseResult parse_result = parse_input(scratch.arena, filename);
 	if (parse_result.failed) {
 		fatal("Failed to parse input file: %s\n", parse_result.error);
 	}
 
-	Vector *solution = vec_alloc(arena, parse_result.vector->precision, parse_result.vector->num_values);
+	Vector *solution = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
 
 	if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, solution)) {
 		fatal("Solver failed\n");
 	}
 
 	vec_print(solution);
+
+	scratch_end(scratch);
 
 	return 0;
 }

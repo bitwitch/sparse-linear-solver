@@ -28,6 +28,7 @@ typedef struct {
 	SolverKind solver;
 	SparseMatrix *matrix;
 	Vector *vector;
+	Vector *solution;
 	bool failed;
 	char *error;
 } ParseResult;
@@ -36,20 +37,30 @@ static char *stream;
 static Token token;
 static int current_line;
 
+char *keyword_format;
 char *keyword_float;
 char *keyword_double;
+char *keyword_solver;
 char *keyword_steepest_descent;
 char *keyword_conjugate_directions;
 char *keyword_conjugate_gradients;
+char *keyword_matrix;
+char *keyword_vector;
+char *keyword_solution;
 
 void init_keywords(void) {
     static bool first = true;
     if (first) {
+		keyword_format = str_intern("format");
 		keyword_float = str_intern("float");
 		keyword_double = str_intern("double");
+		keyword_solver = str_intern("solver");
 		keyword_steepest_descent = str_intern("steepest_descent");
 		keyword_conjugate_directions = str_intern("conjugate_directions");
 		keyword_conjugate_gradients = str_intern("conjugate_gradients");
+		keyword_matrix = str_intern("matrix");
+		keyword_vector = str_intern("vector");
+		keyword_solution = str_intern("solution");
 	}
 	first = false;
 }
@@ -168,20 +179,14 @@ static inline bool is_token_name(char *name) {
 	return token.kind == TOKEN_NAME && token.name == str_intern(name);
 }
 
-static void expect_token_name(char *name) {
-	char *expected_name = str_intern(name);
+static void expect_keyword(char *keyword) {
 	if (token.kind != TOKEN_NAME) {
-		fatal("Expected token name '%s', got %s", 
-			expected_name,
-			token_kind_to_str(token.kind));
+		fatal("Expected keyword '%s', got %s", keyword, token_kind_to_str(token.kind));
 	}
 
-	if (token.name != str_intern(name)) {
-		fatal("Expected token name '%s', got '%s'", 
-			expected_name,
-			token.name);
+	if (token.name != keyword) {
+		fatal("Expected keyword'%s', got '%s'", keyword, token.name);
 	}
-
 	next_token();
 }
 
@@ -218,7 +223,7 @@ char *parse_name(void) {
 
 static FloatPrecision parse_format(void) {
 	FloatPrecision format = 0;
-	expect_token_name("format");
+	expect_keyword(keyword_format);
 	expect_token(':');
 	char *name = parse_name();
 	if (name == keyword_float) {
@@ -233,7 +238,7 @@ static FloatPrecision parse_format(void) {
 
 static SolverKind parse_solver(void) {
 	SolverKind solver = 0;
-	expect_token_name("solver");
+	expect_keyword(keyword_solver);
 	expect_token(':');
 	char *name = parse_name();
 	if (name == keyword_conjugate_gradients) {
@@ -249,7 +254,7 @@ static SolverKind parse_solver(void) {
 }
 
 static SparseMatrix *parse_matrix(Arena *arena, FloatPrecision format) {
-	expect_token_name("matrix");
+	expect_keyword(keyword_matrix);
 	expect_token(':');
 	U64 num_values = parse_int();
 
@@ -275,8 +280,8 @@ static SparseMatrix *parse_matrix(Arena *arena, FloatPrecision format) {
 	return matrix;
 }
 
-static Vector *parse_vector(Arena *arena, FloatPrecision format) {
-	expect_token_name("vector");
+static Vector *parse_vector(Arena *arena, char *keyword, FloatPrecision format) {
+	expect_keyword(keyword);
 	expect_token(':');
 	U64 num_values = parse_int();
 
@@ -317,7 +322,12 @@ static ParseResult parse_input(Arena *arena, char *file_name) {
 	FloatPrecision format = parse_format();
 	result.solver = parse_solver();
 	result.matrix = parse_matrix(arena, format);
-	result.vector = parse_vector(arena, format);
+	result.vector = parse_vector(arena, keyword_vector, format);
+
+	// optionally parse a solution vector
+	if (is_token(TOKEN_NAME) && token.name == keyword_solution) {
+		result.solution = parse_vector(arena, keyword_solution, format);
+	}
 
 	return result;
 }

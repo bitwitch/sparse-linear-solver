@@ -11,10 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if _WIN32
 #pragma warning (push, 0)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #pragma warning (pop)
+#endif
 
 #include "common.c"
 #include "sparse_linear_algebra.c"
@@ -27,6 +29,8 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 	char *filename = argv[1];
+
+	profile_begin();
 
 	init_scratch();
 	ArenaTemp scratch = scratch_begin(NULL, 0);
@@ -42,10 +46,12 @@ int main(int argc, char **argv) {
 		fatal("Solver failed\n");
 	}
 
-	vec_print(solution);
+	// vec_print(solution);
 
 	scratch_end(scratch);
 
+	profile_end();
 	return 0;
 }
 
+PROFILE_TRANSLATION_UNIT_END;

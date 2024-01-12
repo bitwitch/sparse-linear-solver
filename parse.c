@@ -49,6 +49,7 @@ char *keyword_vector;
 char *keyword_solution;
 
 void init_keywords(void) {
+	PROFILE_FUNCTION_BEGIN;
     static bool first = true;
     if (first) {
 		keyword_format = str_intern("format");
@@ -63,9 +64,11 @@ void init_keywords(void) {
 		keyword_solution = str_intern("solution");
 	}
 	first = false;
+	PROFILE_FUNCTION_END;
 }
 
 void next_token(void) {
+	PROFILE_FUNCTION_BEGIN;
 repeat:
 	token.start = stream;
 	token.pos.line = current_line;
@@ -125,19 +128,23 @@ repeat:
         }
 	}
     token.end = stream;
+	PROFILE_FUNCTION_END;
 }
 
 static void init_parse(char *source_path, char *source) {
+	PROFILE_FUNCTION_BEGIN;
 	init_str_intern();
 	init_keywords();
 	stream = source;
 	token.pos.filepath = str_intern(source_path);
 	current_line = 1;
 	next_token();
+	PROFILE_FUNCTION_END;
 }
 
 // used for error messages
 static char *token_kind_to_str(TokenKind kind) {
+	PROFILE_FUNCTION_BEGIN;
 	char str[64] = {0};
 	switch (kind) {
     case TOKEN_INT:    sprintf(str, "integer"); break;
@@ -151,16 +158,19 @@ static char *token_kind_to_str(TokenKind kind) {
         }
         break;
     }
+	PROFILE_FUNCTION_END;
     return str_intern(str);
 }
 
 static void expect_token(TokenKind kind) {
+	PROFILE_FUNCTION_BEGIN;
 	if (token.kind != kind) {
 		fatal("Expected token %s, got %s", 
 			token_kind_to_str(kind), 
 			token_kind_to_str(token.kind));
 	}
 	next_token();
+	PROFILE_FUNCTION_END;
 }
 
 static bool match_token(TokenKind kind) {
@@ -180,6 +190,7 @@ static inline bool is_token_name(char *name) {
 }
 
 static void expect_keyword(char *keyword) {
+	PROFILE_FUNCTION_BEGIN;
 	if (token.kind != TOKEN_NAME) {
 		fatal("Expected keyword '%s', got %s", keyword, token_kind_to_str(token.kind));
 	}
@@ -188,18 +199,22 @@ static void expect_keyword(char *keyword) {
 		fatal("Expected keyword'%s', got '%s'", keyword, token.name);
 	}
 	next_token();
+	PROFILE_FUNCTION_END;
 }
 
 static S64 parse_int(void) {
+	PROFILE_FUNCTION_BEGIN;
 	if (!is_token(TOKEN_INT)) {
 		fatal("Expected integer, got %s", token_kind_to_str(token.kind));
 	}
 	U64 number = token.int_val;
 	next_token();
+	PROFILE_FUNCTION_END;
 	return number;
 }
 
 static F64 parse_float(void) {
+	PROFILE_FUNCTION_BEGIN;
 	F64 number = 0;
 	if (is_token(TOKEN_INT)) {
 		number = (F64)token.int_val;
@@ -209,19 +224,23 @@ static F64 parse_float(void) {
 		fatal("Expected float, got %s", token_kind_to_str(token.kind));
 	}
 	next_token();
+	PROFILE_FUNCTION_END;
 	return number;
 }
 
 char *parse_name(void) {
+	PROFILE_FUNCTION_BEGIN;
 	if (!is_token(TOKEN_NAME)) {
         fatal("Expected name, got %s", token_kind_to_str(token.kind));
 	}
 	char *name = token.name;
 	next_token();
+	PROFILE_FUNCTION_END;
 	return name;
 }
 
 static FloatPrecision parse_format(void) {
+	PROFILE_FUNCTION_BEGIN;
 	FloatPrecision format = 0;
 	expect_keyword(keyword_format);
 	expect_token(':');
@@ -233,10 +252,12 @@ static FloatPrecision parse_format(void) {
 	} else {
 		fatal("expected one of [float, double], got %s", name);
 	}
+	PROFILE_FUNCTION_END;
 	return format;
 }
 
 static SolverKind parse_solver(void) {
+	PROFILE_FUNCTION_BEGIN;
 	SolverKind solver = 0;
 	expect_keyword(keyword_solver);
 	expect_token(':');
@@ -250,10 +271,12 @@ static SolverKind parse_solver(void) {
 	} else {
 		fatal("expected one of [conjugate_gradients, conjugate_directions, steepest_descent], got %s", name);
 	}
+	PROFILE_FUNCTION_END;
 	return solver;
 }
 
 static SparseMatrix *parse_matrix(Arena *arena, FloatPrecision format) {
+	PROFILE_FUNCTION_BEGIN;
 	expect_keyword(keyword_matrix);
 	expect_token(':');
 	U64 num_values = parse_int();
@@ -277,10 +300,12 @@ static SparseMatrix *parse_matrix(Arena *arena, FloatPrecision format) {
 		}
 	}
 
+	PROFILE_FUNCTION_END;
 	return matrix;
 }
 
 static Vector *parse_vector(Arena *arena, char *keyword, FloatPrecision format) {
+	PROFILE_FUNCTION_BEGIN;
 	expect_keyword(keyword);
 	expect_token(':');
 	U64 num_values = parse_int();
@@ -301,10 +326,12 @@ static Vector *parse_vector(Arena *arena, char *keyword, FloatPrecision format) 
 		}
 	}
 
+	PROFILE_FUNCTION_END;
 	return vector;
 }
 
 static ParseResult parse_input(Arena *arena, char *file_name) {
+	PROFILE_FUNCTION_BEGIN;
 	ParseResult result = {0};
 
 	char *file_data;
@@ -329,6 +356,7 @@ static ParseResult parse_input(Arena *arena, char *file_name) {
 		result.solution = parse_vector(arena, keyword_solution, format);
 	}
 
+	PROFILE_FUNCTION_END;
 	return result;
 }
 

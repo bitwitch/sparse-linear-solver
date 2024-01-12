@@ -19,6 +19,7 @@ typedef struct {
 } Vector;
 
 static void vec_print(Vector *v) {
+	PROFILE_FUNCTION_BEGIN;
 	printf("{ ");
 	for (U64 i=0; i<v->num_values; ++i) {
 		if (v->precision == PRECISION_F32) {
@@ -29,9 +30,11 @@ static void vec_print(Vector *v) {
 		}
 	}
 	printf("}\n");
+	PROFILE_FUNCTION_END;
 }
 
 static Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
+	PROFILE_FUNCTION_BEGIN;
 	Vector *v = arena_push_n(arena, Vector, 1);
 	v->precision = precision;
 	v->num_values = num_values;
@@ -42,10 +45,12 @@ static Vector *vec_alloc(Arena *arena, FloatPrecision precision, U64 num_values)
 		assert(precision == PRECISION_F64);
 		v->valuesF64 = arena_push_n(arena, F64, num_values);
 	}
+	PROFILE_FUNCTION_END;
 	return v;
 }
 
 static Vector *vec_copy(Arena *arena, Vector *v) {
+	PROFILE_FUNCTION_BEGIN;
 	Vector *result = vec_alloc(arena, v->precision, v->num_values);
 	if (v->precision == PRECISION_F32) {
 		memcpy(result->valuesF32, v->valuesF32, v->num_values * sizeof(*v->valuesF32));
@@ -53,19 +58,23 @@ static Vector *vec_copy(Arena *arena, Vector *v) {
 		assert(v->precision == PRECISION_F64);
 		memcpy(result->valuesF64, v->valuesF64, v->num_values * sizeof(*v->valuesF64));
 	}
+	PROFILE_FUNCTION_END;
 	return result;
 }
 
 static void vec_zero(Vector *v) {
+	PROFILE_FUNCTION_BEGIN;
 	if (v->precision == PRECISION_F32) {
 		memset(v->valuesF32, 0, v->num_values * sizeof(*v->valuesF32));
 	} else {
 		assert(v->precision == PRECISION_F64);
 		memset(v->valuesF64, 0, v->num_values * sizeof(*v->valuesF64));
 	}
+	PROFILE_FUNCTION_END;
 }
 
 static void vec_set(Vector *v, U64 index, F64 value) {
+	PROFILE_FUNCTION_BEGIN;
 	if (index >= v->num_values) {
 		fatal("vec_set: index (%llu) is greater than the size of the vector (%llu)", index, v->num_values);
 	}
@@ -76,9 +85,11 @@ static void vec_set(Vector *v, U64 index, F64 value) {
 		assert(v->precision == PRECISION_F64);
 		v->valuesF64[index] = value;
 	}
+	PROFILE_FUNCTION_END;
 }
 
 static void check_vector_arguments(char *prefix, Vector *result, Vector *a, Vector *b) {
+	PROFILE_FUNCTION_BEGIN;
 	if (a->precision != b->precision || a->precision != result->precision) {
 		fatal("%s: vector arguments have different float precision", prefix);
 	}
@@ -86,9 +97,11 @@ static void check_vector_arguments(char *prefix, Vector *result, Vector *a, Vect
 		fatal("%s: vector arguments have different sizes: result=%llu, a=%llu, b=%llu",
 			prefix, result->num_values, a->num_values, b->num_values);
 	}
+	PROFILE_FUNCTION_END;
 }
 
 static void vec_add(Vector *result, Vector *a, Vector *b) {
+	PROFILE_FUNCTION_BEGIN;
 	check_vector_arguments("vec_add", result, a, b);
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
@@ -98,9 +111,11 @@ static void vec_add(Vector *result, Vector *a, Vector *b) {
 			result->valuesF64[i] = a->valuesF64[i] + b->valuesF64[i];
 		}
 	}
+	PROFILE_FUNCTION_END;
 }
 
 static void vec_sub(Vector *result, Vector *a, Vector *b) {
+	PROFILE_FUNCTION_BEGIN;
 	check_vector_arguments("vec_sub", result, a, b);
 	for (U64 i=0; i < a->num_values; ++i) {
 		if (a->precision == PRECISION_F32) {
@@ -110,9 +125,11 @@ static void vec_sub(Vector *result, Vector *a, Vector *b) {
 			result->valuesF64[i] = a->valuesF64[i] - b->valuesF64[i];
 		}
 	}
+	PROFILE_FUNCTION_END;
 }
 
 static F64 vec_dot(Vector *a, Vector *b) {
+	PROFILE_FUNCTION_BEGIN;
 	if (a->precision != b->precision) {
 		fatal("vec_dot: vector arguments have different float precision");
 	}
@@ -131,10 +148,12 @@ static F64 vec_dot(Vector *a, Vector *b) {
 		}
 	}
 
+	PROFILE_FUNCTION_END;
 	return result;
 }
 
 static void vec_scale(Vector *result, Vector *v, F64 scalar) {
+	PROFILE_FUNCTION_BEGIN;
 	if (result->precision != v->precision) {
 		fatal("vec_scale: vector arguments have different float precision");
 	}
@@ -151,9 +170,11 @@ static void vec_scale(Vector *result, Vector *v, F64 scalar) {
 			result->valuesF64[i] = v->valuesF64[i] * scalar;
 		}
 	}
+	PROFILE_FUNCTION_END;
 }
 
 static SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U64 num_values) {
+	PROFILE_FUNCTION_BEGIN;
 	SparseMatrix *m = arena_push_n(arena, SparseMatrix, 1);
 	m->precision = precision;
 	m->num_values = num_values;
@@ -167,10 +188,12 @@ static SparseMatrix *sparse_mat_alloc(Arena *arena, FloatPrecision precision, U6
 		m->valuesF64 = arena_push_n(arena, F64, num_values);
 	}
 
+	PROFILE_FUNCTION_END;
 	return m;
 }
 
 static void sparse_mat_mul_vec(Vector *result, SparseMatrix *m, Vector *v) {
+	PROFILE_FUNCTION_BEGIN;
 	if (m->precision != v->precision || v->precision != result->precision) {
 		fatal("sparse_mat_mul_vec: arguments have different float precision");
 	}
@@ -179,8 +202,8 @@ static void sparse_mat_mul_vec(Vector *result, SparseMatrix *m, Vector *v) {
 			result->num_values, v->num_values);
 	}
 
-	// NOTE(shaw): result and v could alias and values are accumulated into
-	// result and assume it starts zeroed. this means we have to allocate a
+	// NOTE(shaw): result and v could alias, and since result needs to be
+	// zeroed before accumulating values this means we have to allocate a
 	// temporary vector to accumulate values into and then copy them out to
 	// result at the end
 	ArenaTemp scratch = scratch_begin(NULL, 0);
@@ -208,6 +231,7 @@ static void sparse_mat_mul_vec(Vector *result, SparseMatrix *m, Vector *v) {
 	}
 
 	scratch_end(scratch);
+	PROFILE_FUNCTION_END;
 }
 
 

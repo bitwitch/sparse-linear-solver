@@ -13,6 +13,7 @@ static bool solve_conjugate_directions(SparseMatrix *A, Vector *b, Vector *resul
 }
 
 static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result) {
+	PROFILE_FUNCTION_BEGIN;
 	FloatPrecision precision = result->precision;
 	U64 vec_size = b->num_values;
 
@@ -84,16 +85,21 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 	}
 #endif
 
+	PROFILE_FUNCTION_END;
 	return result;
 }
 
 bool solve(SolverKind kind, SparseMatrix *A, Vector *v, Vector *result) {
+	PROFILE_FUNCTION_BEGIN;
+	bool success = false;
 	switch (kind) {
-		case SOLVER_STEEPEST_DESCENT:     return solve_steepest_descent(A, v, result);
-		case SOLVER_CONJUGATE_DIRECTIONS: return solve_conjugate_directions(A, v, result);
-		case SOLVER_CONJUGATE_GRADIENTS:  return solve_conjugate_gradients(A, v, result);
-		default: assert(0); return false;
+		case SOLVER_STEEPEST_DESCENT:     success = solve_steepest_descent(A, v, result);     break;
+		case SOLVER_CONJUGATE_DIRECTIONS: success = solve_conjugate_directions(A, v, result); break;
+		case SOLVER_CONJUGATE_GRADIENTS:  success = solve_conjugate_gradients(A, v, result);  break;
+		default: assert(0); break;
 	}
+	PROFILE_FUNCTION_END;
+	return success;
 }
 
 

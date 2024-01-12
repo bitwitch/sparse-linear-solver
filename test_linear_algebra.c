@@ -199,7 +199,9 @@ static void test_conjugate_gradients(void) {
 	U64 num_tests = 1000;
 	for (U64 i=0; i<num_tests; ++i) {
 		ArenaTemp scratch = scratch_begin(NULL, 0);
+
 		printf("Test %llu...", i);
+
 		enum { max_path = 256 };
 		char path[max_path];
 		snprintf(path, max_path, "tests/test_%llu.txt", i);
@@ -211,7 +213,6 @@ static void test_conjugate_gradients(void) {
 		}
 
 		Vector *actual = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
-
 		if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, actual)) {
 			printf("  failed. Solver failed to produce a solution\n");
 			goto fail;
@@ -232,11 +233,16 @@ fail:
 
 int main(int argc, char **argv) {
 	(void)argc; (void)argv;
+	
+	profile_begin();
+
 	init_scratch();
 
 	// test_linear_algebra();
 	test_conjugate_gradients();
 
+	profile_end();
 	return 0;
 }
 
+PROFILE_TRANSLATION_UNIT_END;

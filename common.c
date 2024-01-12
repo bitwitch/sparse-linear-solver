@@ -38,6 +38,54 @@ typedef enum {
 } SolverKind;
 
 // ---------------------------------------------------------------------------
+// OS Specific Functions
+// ---------------------------------------------------------------------------
+#if _WIN32
+U64 os_timer_freq(void) {
+	LARGE_INTEGER Freq;
+	QueryPerformanceFrequency(&Freq);
+	return Freq.QuadPart;
+}
+
+U64 os_read_timer(void) {
+	LARGE_INTEGER Value;
+	QueryPerformanceCounter(&Value);
+	return Value.QuadPart;
+}
+
+U64 os_file_size(char *filepath) {
+	struct __stat64 stat = {0};
+	_stat64(filepath, &stat);
+	return stat.st_size;
+}
+
+U32 os_get_page_size(void) {
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	return system_info.dwPageSize;
+}
+
+void *os_memory_reserve(U64 size) {
+	return VirtualAlloc(0, size, MEM_RESERVE, PAGE_NOACCESS);
+}
+
+void *os_memory_commit(void *addr, U64 size) {
+	return VirtualAlloc(addr, size, MEM_COMMIT, PAGE_READWRITE);
+}
+
+bool os_memory_decommit(void *addr, U64 size) {
+	return VirtualFree(addr, size, MEM_DECOMMIT);
+}
+
+bool os_memory_release(void *addr, U64 size) {
+	(void) size; // unused on windows
+	return VirtualFree(addr, 0, MEM_RELEASE);
+}
+#else
+#error "This operating system is currently not supported."
+#endif
+
+// ---------------------------------------------------------------------------
 // Helper Utilities
 // ---------------------------------------------------------------------------
 void *xmalloc(size_t size) {
@@ -139,16 +187,14 @@ typedef struct {
 } ArenaTemp;
 
 Arena *arena_alloc(void) {
-	SYSTEM_INFO system_info;
-	GetSystemInfo(&system_info);
-	U64 page_size = system_info.dwPageSize;
+	U64 page_size = os_get_page_size();
 	
-	Arena *reserved = VirtualAlloc(0, ARENA_RESERVE_SIZE, MEM_RESERVE, PAGE_NOACCESS);
+	Arena *reserved = os_memory_reserve(ARENA_RESERVE_SIZE);
 	if (!reserved) return NULL;
 
-	Arena *arena = VirtualAlloc(reserved, page_size, MEM_COMMIT, PAGE_READWRITE);
+	Arena *arena = os_memory_commit(reserved, page_size);
 	if (!arena) {
-		VirtualFree(reserved, 0, MEM_RELEASE);
+		os_memory_release(reserved, 0);
 		return NULL;
 	}
 
@@ -168,7 +214,7 @@ void arena_pop_to(Arena *arena, U64 pos) {
 	U64 pos_aligned_to_page_size = ALIGN_UP(pos, arena->page_size);
 	U64 to_decommit = arena->committed - pos_aligned_to_page_size;
 	if (to_decommit > 0) {
-		VirtualFree((U8*)arena + pos_aligned_to_page_size, to_decommit, MEM_DECOMMIT);
+		os_memory_decommit((U8*)arena + pos_aligned_to_page_size, to_decommit);
 		arena->committed -= to_decommit;
 	}
 	arena->pos = MAX(pos, sizeof(Arena));
@@ -180,7 +226,7 @@ void arena_clear(Arena *arena) {
 
 void arena_release(Arena *arena) {
 	if (arena) {
-		VirtualFree(arena, 0, MEM_RELEASE);
+		os_memory_release(arena, 0);
 	}
 }
 
@@ -193,7 +239,7 @@ void *arena_push(Arena *arena, U64 size, U64 alignment, bool zero) {
 	// commit more memory if needed
 	if (arena->pos + size >= arena->committed) {
 		U64 to_commit = ALIGN_UP(arena->pos + size, arena->page_size);
-		void *ok = VirtualAlloc(arena, to_commit, MEM_COMMIT, PAGE_READWRITE);
+		void *ok = os_memory_commit(arena, to_commit);
 		assert(ok);
 		arena->committed = to_commit;
 	}
@@ -417,9 +463,7 @@ bool read_entire_file(Arena *arena, char *file_path, char **file_data, U64 *out_
 		return false;
 	}
 
-	struct __stat64 stat = {0};
-	_stat64(file_path, &stat);
-	U64 file_size = stat.st_size;
+	U64 file_size = os_file_size(file_path);
 
 	*out_size = file_size + 1;
 	*file_data = arena_push_n(arena, char, *out_size);
@@ -439,4 +483,122 @@ bool read_entire_file(Arena *arena, char *file_path, char **file_data, U64 *out_
 
 	return true;
 }
+
+// ---------------------------------------------------------------------------
+// Profiling
+// ---------------------------------------------------------------------------
+U64 read_cpu_timer(void) {
+	return __rdtsc();
+}
+
+U64 estimate_cpu_freq(void) {
+	U64 wait_time_ms = 100;
+	U64 os_freq = os_timer_freq();
+	U64 os_ticks_during_wait_time = os_freq * wait_time_ms / 1000;
+	U64 os_elapsed = 0;
+	U64 os_start = os_read_timer();
+	U64 cpu_start = read_cpu_timer();
+
+	while (os_elapsed < os_ticks_during_wait_time) {
+		os_elapsed = os_read_timer() - os_start;
+	}
+
+	U64 cpu_freq = (read_cpu_timer() - cpu_start) * os_freq / os_elapsed;
+
+	return cpu_freq;
+}
+
+typedef struct {
+	char *name;
+	U64 count;
+	U64 ticks_exclusive; // without children
+	U64 ticks_inclusive; // with children
+	U64 processed_byte_count;
+} ProfileBlock;
+
+ProfileBlock profile_blocks[4096];
+U64 profile_start; 
+U64 current_profile_block_index;
+
+#ifdef PROFILE
+
+// NOTE(shaw): This macro is not guarded with typical do-while because it relies on 
+// variables declared inside it being accessible in the associated PROFILE_BLOCK_END.
+// This means that you cannot have nested profile blocks in the same scope.
+// However, in most cases you either already have separate scopes, or you
+// should trivially be able to open a new scope {}.
+#define PROFILE_BLOCK_BEGIN(block_name) \
+	char *__block_name = block_name; \
+	U64 __block_index = __COUNTER__ + 1; \
+	ProfileBlock *__block = &profile_blocks[__block_index]; \
+	U64 __top_level_sum = __block->ticks_inclusive; \
+	U64 __parent_index = current_profile_block_index; \
+	current_profile_block_index = __block_index; \
+	U64 __block_start = read_cpu_timer(); \
+
+#define PROFILE_BLOCK_END_THROUGHPUT(byte_count) do { \
+	U64 elapsed = read_cpu_timer() - __block_start; \
+	__block->name = __block_name; \
+	++__block->count; \
+	__block->ticks_inclusive = __top_level_sum + elapsed; \
+	__block->ticks_exclusive += elapsed; \
+	__block->processed_byte_count += byte_count; \
+	profile_blocks[__parent_index].ticks_exclusive -= elapsed; \
+	current_profile_block_index = __parent_index; \
+} while(0)
+
+#define PROFILE_BLOCK_END      PROFILE_BLOCK_END_THROUGHPUT(0)
+#define PROFILE_FUNCTION_BEGIN PROFILE_BLOCK_BEGIN(__func__)
+#define PROFILE_FUNCTION_END   PROFILE_BLOCK_END
+
+#define PROFILE_TRANSLATION_UNIT_END static_assert(ARRAY_COUNT(profile_blocks) > __COUNTER__, "Too many profile blocks")
+
+#else 
+
+#define PROFILE_BLOCK_BEGIN(...)
+#define PROFILE_BLOCK_END
+#define PROFILE_FUNCTION_BEGIN
+#define PROFILE_FUNCTION_END
+#define PROFILE_TRANSLATION_UNIT_END
+
+#endif // PROFILE
+
+void profile_begin(void) {
+	profile_start = read_cpu_timer();
+}
+
+void profile_end(void) {
+	U64 total_ticks = read_cpu_timer() - profile_start;
+	assert(total_ticks);
+	U64 cpu_freq = estimate_cpu_freq();
+	assert(cpu_freq);
+	F64 total_ms = 1000 * (total_ticks / (F64)cpu_freq);
+
+	printf("\nTotal time: %f ms %llu ticks (cpu freq %llu)\n", total_ms, total_ticks, cpu_freq);
+
+	for (int i=0; i<ARRAY_COUNT(profile_blocks); ++i) {
+		ProfileBlock block = profile_blocks[i];
+		if (!block.ticks_inclusive) continue;
+
+		F64 pct_exclusive = 100 * (block.ticks_exclusive / (F64)total_ticks);
+		printf("\t%s[%llu]: %llu (%.2f%%", block.name, block.count, block.ticks_exclusive, pct_exclusive);
+
+		if (block.ticks_exclusive != block.ticks_inclusive) {
+			F64 pct_inclusive = 100 * (block.ticks_inclusive / (F64)total_ticks);
+			printf(", %.2f%% w/children", pct_inclusive);
+		} 
+
+		printf(")");
+
+		if (block.processed_byte_count) {
+			F64 megabytes = block.processed_byte_count / (F64)(1024*1024);
+			F64 gigabytes_per_second = (megabytes / 1024) / (block.ticks_inclusive / (F64)cpu_freq);
+			printf(" %.3fmb at %.2fgb/s", megabytes, gigabytes_per_second);
+		}
+
+		printf("\n");
+	}
+}
+
+
 

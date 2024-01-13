@@ -21,7 +21,7 @@
 #include "solver.c"
 
 // see https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/
-bool F32_equal(F32 a, F32 b, F32 max_diff) {
+static bool F32_equal(F32 a, F32 b, F32 max_diff) {
     F32 diff = fabsf(a - b);
     if (diff <= max_diff) return true;
 
@@ -32,7 +32,7 @@ bool F32_equal(F32 a, F32 b, F32 max_diff) {
     return (diff <= largest * 0.00001);
 }
 
-bool F64_equal(F64 a, F64 b, F64 max_diff) {
+static bool F64_equal(F64 a, F64 b, F64 max_diff) {
     // Check if the numbers are really close -- needed
     // when comparing numbers near zero.
     F64 diff = fabs(a - b);

@@ -41,6 +41,11 @@ typedef enum {
 // OS Specific Functions
 // ---------------------------------------------------------------------------
 #if _WIN32
+#pragma warning (push, 0)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#pragma warning (pop)
+
 U64 os_timer_freq(void) {
 	LARGE_INTEGER Freq;
 	QueryPerformanceFrequency(&Freq);
@@ -81,6 +86,7 @@ bool os_memory_release(void *addr, U64 size) {
 	(void) size; // unused on windows
 	return VirtualFree(addr, 0, MEM_RELEASE);
 }
+
 #else
 #error "This operating system is currently not supported."
 #endif

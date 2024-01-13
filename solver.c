@@ -12,6 +12,7 @@ static bool solve_conjugate_directions(SparseMatrix *A, Vector *b, Vector *resul
 	return false;
 }
 
+// result and b must be distinct vectors
 static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result) {
 	PROFILE_FUNCTION_BEGIN;
 	FloatPrecision precision = result->precision;
@@ -49,7 +50,7 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 		vec_add(result, result, tmp);
 
 		if (((i+1) % ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE) == 0) {
-			// r = b - A * x
+			// residual = b - A * x
 			sparse_mat_mul_vec(tmp, A, result);
 			vec_sub(residual, b, tmp);
 
@@ -66,9 +67,6 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 		// search_dir = residual + beta * search_dir
 		vec_scale(tmp, search_dir, beta);
 		vec_add(search_dir, residual, tmp);
-
-		// printf("iteration %llu: ", i);
-		// vec_print(result);
 
 		arena_pop_to(scratch.arena, pos);
 	}
@@ -89,7 +87,9 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 	return result;
 }
 
-bool solve(SolverKind kind, SparseMatrix *A, Vector *v, Vector *result) {
+// executes the solver specified by 'kind' and places the solution into 'result' 
+// 'result' and 'b' must be distinct vectors
+static bool solve(SolverKind kind, SparseMatrix *A, Vector *v, Vector *result) {
 	PROFILE_FUNCTION_BEGIN;
 	bool success = false;
 	switch (kind) {

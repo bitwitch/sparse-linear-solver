@@ -29,26 +29,36 @@ typedef struct {
 	SparseMatrix *matrix;
 	Vector *vector;
 	Vector *solution;
-	bool failed;
-	char *error;
+	// bool failed;
+	// char *error;
 } ParseResult;
 
 static char *stream;
 static Token token;
 static int current_line;
 
-char *keyword_format;
-char *keyword_float;
-char *keyword_double;
-char *keyword_solver;
-char *keyword_steepest_descent;
-char *keyword_conjugate_directions;
-char *keyword_conjugate_gradients;
-char *keyword_matrix;
-char *keyword_vector;
-char *keyword_solution;
+static char *keyword_format;
+static char *keyword_float;
+static char *keyword_double;
+static char *keyword_solver;
+static char *keyword_steepest_descent;
+static char *keyword_conjugate_directions;
+static char *keyword_conjugate_gradients;
+static char *keyword_matrix;
+static char *keyword_vector;
+static char *keyword_solution;
 
-void init_keywords(void) {
+static void parse_error(char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    fprintf(stderr, "%s:%d: parse error: ", token.pos.filepath, token.pos.line);
+    vfprintf(stderr, fmt, args);
+    fprintf(stderr, "\n");
+    va_end(args);
+    exit(1);
+}
+
+static void init_keywords(void) {
 	PROFILE_FUNCTION_BEGIN;
     static bool first = true;
     if (first) {
@@ -67,7 +77,7 @@ void init_keywords(void) {
 	PROFILE_FUNCTION_END;
 }
 
-void next_token(void) {
+static void next_token(void) {
 	PROFILE_FUNCTION_BEGIN;
 repeat:
 	token.start = stream;
@@ -165,7 +175,7 @@ static char *token_kind_to_str(TokenKind kind) {
 static void expect_token(TokenKind kind) {
 	PROFILE_FUNCTION_BEGIN;
 	if (token.kind != kind) {
-		fatal("Expected token %s, got %s", 
+		parse_error("expected token %s, got %s", 
 			token_kind_to_str(kind), 
 			token_kind_to_str(token.kind));
 	}
@@ -192,11 +202,11 @@ static inline bool is_token_name(char *name) {
 static void expect_keyword(char *keyword) {
 	PROFILE_FUNCTION_BEGIN;
 	if (token.kind != TOKEN_NAME) {
-		fatal("Expected keyword '%s', got %s", keyword, token_kind_to_str(token.kind));
+		parse_error("expected keyword '%s', got %s", keyword, token_kind_to_str(token.kind));
 	}
 
 	if (token.name != keyword) {
-		fatal("Expected keyword'%s', got '%s'", keyword, token.name);
+		parse_error("expected keyword '%s', got '%s'", keyword, token.name);
 	}
 	next_token();
 	PROFILE_FUNCTION_END;
@@ -205,7 +215,7 @@ static void expect_keyword(char *keyword) {
 static S64 parse_int(void) {
 	PROFILE_FUNCTION_BEGIN;
 	if (!is_token(TOKEN_INT)) {
-		fatal("Expected integer, got %s", token_kind_to_str(token.kind));
+		parse_error("expected integer, got %s", token_kind_to_str(token.kind));
 	}
 	U64 number = token.int_val;
 	next_token();
@@ -221,17 +231,17 @@ static F64 parse_float(void) {
 	} else if (is_token(TOKEN_FLOAT)) {
 		number = token.float_val;
 	} else {
-		fatal("Expected float, got %s", token_kind_to_str(token.kind));
+		parse_error("expected float, got %s", token_kind_to_str(token.kind));
 	}
 	next_token();
 	PROFILE_FUNCTION_END;
 	return number;
 }
 
-char *parse_name(void) {
+static char *parse_name(void) {
 	PROFILE_FUNCTION_BEGIN;
 	if (!is_token(TOKEN_NAME)) {
-        fatal("Expected name, got %s", token_kind_to_str(token.kind));
+        parse_error("expected name, got %s", token_kind_to_str(token.kind));
 	}
 	char *name = token.name;
 	next_token();
@@ -250,7 +260,7 @@ static FloatPrecision parse_format(void) {
 	} else if (name == keyword_double) {
 		format = PRECISION_F64;
 	} else {
-		fatal("expected one of [float, double], got %s", name);
+		parse_error("expected one of [float, double], got %s", name);
 	}
 	PROFILE_FUNCTION_END;
 	return format;
@@ -269,7 +279,7 @@ static SolverKind parse_solver(void) {
 	} else if (name == keyword_steepest_descent) {
 		solver = SOLVER_STEEPEST_DESCENT;
 	} else {
-		fatal("expected one of [conjugate_gradients, conjugate_directions, steepest_descent], got %s", name);
+		parse_error("expected one of [conjugate_gradients, conjugate_directions, steepest_descent], got %s", name);
 	}
 	PROFILE_FUNCTION_END;
 	return solver;
@@ -286,7 +296,7 @@ static SparseMatrix *parse_matrix(Arena *arena, FloatPrecision format) {
 	// parse matrix values
 	for (U64 i=0; is_token(TOKEN_INT); ++i) {
 		if (i >= num_values) {
-			fatal("Expected %llu non-zero values in sparse matrix, but more were encountered", num_values);
+			parse_error("expected %llu non-zero values in sparse matrix, but more were encountered", num_values);
 		}
 
 		matrix->rows[i] = parse_int();
@@ -315,7 +325,7 @@ static Vector *parse_vector(Arena *arena, char *keyword, FloatPrecision format) 
 	// parse vector values
 	for (U64 i=0; is_token(TOKEN_INT) || is_token(TOKEN_FLOAT); ++i) {
 		if (i >= num_values) {
-			fatal("Expected %llu values in vector, but more were encountered", num_values);
+			parse_error("expected %llu values in vector, but more were encountered", num_values);
 		}
 
 		if (format == PRECISION_F32) {
@@ -337,21 +347,20 @@ static ParseResult parse_input(Arena *arena, char *file_name) {
 	char *file_data;
 	U64 file_size;
 	if (!read_entire_file(arena, file_name, &file_data, &file_size)) {
-		result.failed = true;
-		result.error = "Failed to read input file";
-		return result;
+		fatal("Failed to read input file %s", file_name);
 	}
 
 	init_parse(file_name, file_data);
 
-	// TODO(shaw): allow any order for parameters in input file
+	// TODO(shaw): allow any order for parameters in input file,
+	// format will always have to come before matrix and vector though
 
 	FloatPrecision format = parse_format();
 	result.solver = parse_solver();
 	result.matrix = parse_matrix(arena, format);
 	result.vector = parse_vector(arena, keyword_vector, format);
 
-	// optionally parse a solution vector
+	// optionally parse a solution vector (useful for writing tests)
 	if (is_token(TOKEN_NAME) && token.name == keyword_solution) {
 		result.solution = parse_vector(arena, keyword_solution, format);
 	}

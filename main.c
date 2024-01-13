@@ -11,13 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if _WIN32
-#pragma warning (push, 0)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#pragma warning (pop)
-#endif
-
 #include "common.c"
 #include "sparse_linear_algebra.c"
 #include "parse.c"
@@ -36,12 +29,8 @@ int main(int argc, char **argv) {
 	ArenaTemp scratch = scratch_begin(NULL, 0);
 	
 	ParseResult parse_result = parse_input(scratch.arena, filename);
-	if (parse_result.failed) {
-		fatal("Failed to parse input file: %s\n", parse_result.error);
-	}
 
 	Vector *solution = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
-
 	if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, solution)) {
 		fatal("Solver failed\n");
 	}

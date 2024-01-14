@@ -19,6 +19,14 @@
 #include "sparse_linear_algebra.c"
 #include "parse.c"
 #include "solver.c"
+#include "test_no_branching.c"
+
+typedef bool SolverFunc(SparseMatrix *A, Vector *b, Vector *result);
+
+typedef struct {
+	char *name;
+	SolverFunc *func;
+} TestFunc;
 
 // see https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/
 static bool F32_equal(F32 a, F32 b, F32 max_diff) {
@@ -226,6 +234,62 @@ fail:
 	printf("\nSummary: %llu / %llu tests succeeded.\n", sum_success, num_tests);
 }
 
+static F64 seconds_from_cpu_time(F64 cpu_time, U64 cpu_timer_freq) {
+	F64 seconds = 0.0;
+	if (cpu_timer_freq) {
+		seconds = cpu_time / (F64)cpu_timer_freq;
+	}
+	return seconds;
+}
+
+static void test_branch_prediction(void) {
+	U64 num_iterations = 10000;
+	U64 min, max, sum;
+	U64 cpu_timer_freq = estimate_cpu_freq();
+	
+	TestFunc test_funcs[] = {
+		{ .name = "solver with branching", .func = solve_conjugate_gradients },
+		{ .name = "solver without branching", .func = solver_no_branch },
+		{ .name = "simple branch", .func = simple_branch },
+		{ .name = "simple no branch", .func = simple_no_branch },
+	};
+
+	ArenaTemp scratch = scratch_begin(NULL, 0);
+	ParseResult parse_result = parse_input(scratch.arena, "tests/test_small_0.txt");
+	Vector *result = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
+
+	U64 pos = arena_pos(scratch.arena);
+
+	for (U64 i=0; i<ARRAY_COUNT(test_funcs); ++i) {
+		min = UINT64_MAX;
+		max = 0;
+		sum = 0;
+		printf("\n--- %s ---\n", test_funcs[i].name);
+		for (U64 j=0; j<num_iterations; ++j) {
+
+			U64 ticks_start = read_cpu_timer();
+			if (!test_funcs[i].func(parse_result.matrix, parse_result.vector, result)) {
+				printf("Solver failed to produce a solution\n");
+				exit(1);
+			}
+			U64 ticks_stop = read_cpu_timer();
+			U64 ticks = ticks_stop - ticks_start;
+
+			if (ticks < min) min = ticks;
+			if (ticks > max) max = ticks;
+			sum += ticks;
+
+			arena_pop_to(scratch.arena, pos);
+		}
+
+		F64 avg = (F64)sum / (F64)num_iterations;
+		printf("min: %llu (%fms)\n", min, 1000.0f * seconds_from_cpu_time((F64)min, cpu_timer_freq));
+		printf("max: %llu (%fms)\n", max, 1000.0f * seconds_from_cpu_time((F64)max, cpu_timer_freq));
+		printf("avg: %.0f (%fms)\n", avg, 1000.0f * seconds_from_cpu_time(avg, cpu_timer_freq));
+	}
+
+	scratch_end(scratch);
+}
 
 int main(int argc, char **argv) {
 	(void)argc; (void)argv;
@@ -235,7 +299,8 @@ int main(int argc, char **argv) {
 	init_scratch();
 
 	// test_linear_algebra();
-	test_conjugate_gradients();
+	// test_conjugate_gradients();
+	test_branch_prediction();
 
 	profile_end();
 	return 0;

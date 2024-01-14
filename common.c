@@ -132,50 +132,6 @@ void fatal(char *fmt, ...) {
 }
 
 // ---------------------------------------------------------------------------
-// Stretchy Buffers, a la sean barrett
-// ---------------------------------------------------------------------------
-
-typedef struct {
-	size_t len;
-	size_t cap;
-	char buf[]; // flexible array member
-} BUF_Header;
-
-
-// get the metadata of the array which is stored before the actual buffer in memory
-#define buf__header(b) ((BUF_Header*)((char*)b - offsetof(BUF_Header, buf)))
-// checks if n new elements will fit in the array
-#define buf__fits(b, n) (buf_lenu(b) + (n) <= buf_cap(b)) 
-// if n new elements will not fit in the array, grow the array by reallocating 
-#define buf__fit(b, n) (buf__fits(b, n) ? 0 : ((b) = buf__grow((b), buf_lenu(b) + (n), sizeof(*(b)))))
-
-#define BUF(x) x // annotates that x is a stretchy buffer
-#define buf_len(b)  ((b) ? (int32_t)buf__header(b)->len : 0)
-#define buf_lenu(b) ((b) ?          buf__header(b)->len : 0)
-#define buf_set_len(b, l) buf__header(b)->len = (l)
-#define buf_cap(b) ((b) ? buf__header(b)->cap : 0)
-#define buf_end(b) ((b) + buf_lenu(b))
-#define buf_push(b, ...) (buf__fit(b, 1), (b)[buf__header(b)->len++] = (__VA_ARGS__))
-#define buf_free(b) ((b) ? (free(buf__header(b)), (b) = NULL) : 0)
-#define buf_printf(b, ...) ((b) = buf__printf((b), __VA_ARGS__))
-
-void *buf__grow(void *buf, size_t new_len, size_t elem_size) {
-	size_t new_cap = MAX(1 + 2*buf_cap(buf), new_len);
-	assert(new_len <= new_cap);
-	size_t new_size = offsetof(BUF_Header, buf) + new_cap*elem_size;
-
-	BUF_Header *new_header;
-	if (buf) {
-		new_header = xrealloc(buf__header(buf), new_size);
-	} else {
-		new_header = xmalloc(new_size);
-		new_header->len = 0;
-	}
-	new_header->cap = new_cap;
-	return new_header->buf;
-}
-
-// ---------------------------------------------------------------------------
 // Arena Allocator
 // ---------------------------------------------------------------------------
 #define ARENA_RESERVE_SIZE (8LLU * GIGABYTE)

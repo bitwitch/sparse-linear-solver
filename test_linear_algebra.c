@@ -207,10 +207,6 @@ static void test_conjugate_gradients(void) {
 		snprintf(path, max_path, "tests/test_%llu.txt", i);
 
 		ParseResult parse_result = parse_input(scratch.arena, path);
-		if (parse_result.failed) {
-			printf("  failed. Unable to parse input file: %s\n", parse_result.error);
-			goto fail;
-		}
 
 		Vector *actual = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
 		if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, actual)) {

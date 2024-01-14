@@ -1,4 +1,4 @@
-#define ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE 1000
+#define ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE 50
 
 static bool solve_steepest_descent(SparseMatrix *A, Vector *b, Vector *result) {
 	(void)A; (void)b; (void)result;
@@ -20,6 +20,7 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 
 	ArenaTemp scratch = scratch_begin(NULL, 0);
 
+	// initial guess for solution, start at zero
 	vec_zero(result);
 
 	// residual = b - A * x
@@ -87,8 +88,8 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 	return result;
 }
 
-// executes the solver specified by 'kind' and places the solution into 'result' 
-// 'result' and 'b' must be distinct vectors
+// executes the solver specified by kind and places the solution into result 
+// result and b must be distinct vectors
 static bool solve(SolverKind kind, SparseMatrix *A, Vector *v, Vector *result) {
 	PROFILE_FUNCTION_BEGIN;
 	bool success = false;

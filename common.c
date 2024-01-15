@@ -94,7 +94,7 @@ bool os_memory_release(void *addr, U64 size) {
 // ---------------------------------------------------------------------------
 // Helper Utilities
 // ---------------------------------------------------------------------------
-void *xmalloc(size_t size) {
+void *xmalloc(U64 size) {
     void *ptr = malloc(size);
     if (ptr == NULL) {
         perror("malloc");
@@ -103,7 +103,7 @@ void *xmalloc(size_t size) {
     return ptr;
 }
 
-void *xcalloc(size_t num_items, size_t item_size) {
+void *xcalloc(U64 num_items, U64 item_size) {
     void *ptr = calloc(num_items, item_size);
     if (ptr == NULL) {
         perror("calloc");
@@ -112,7 +112,7 @@ void *xcalloc(size_t num_items, size_t item_size) {
     return ptr;
 }
 
-void *xrealloc(void *ptr, size_t size) {
+void *xrealloc(void *ptr, U64 size) {
     void *result = realloc(ptr, size);
     if (result == NULL) {
         perror("recalloc");
@@ -256,8 +256,8 @@ void scratch_end(ArenaTemp scratch) {
 typedef struct {
 	void **keys;
 	void **vals;
-	size_t len;
-	size_t cap;
+	U64 len;
+	U64 cap;
 } Map;
 
 uint64_t uint64_hash(uint64_t x) {
@@ -286,7 +286,7 @@ void *map_get(Map *map, void *key) {
 		return NULL;
 	}
 	assert(map->len < map->cap);
-	size_t i = (size_t)ptr_hash(key);
+	U64 i = (U64)ptr_hash(key);
 
 	for (;;) {
 		i &= map->cap - 1; // power of two masking
@@ -300,7 +300,7 @@ void *map_get(Map *map, void *key) {
 
 void map_put(Map *map, void *key, void *val);
 
-void map_grow(Map *map, size_t new_cap) {
+void map_grow(Map *map, U64 new_cap) {
 	new_cap = MAX(16, new_cap);
 	assert(IS_POW2(new_cap));
 	Map new_map = {
@@ -309,7 +309,7 @@ void map_grow(Map *map, size_t new_cap) {
 		.cap = new_cap,
 	};
 
-	for (size_t i = 0; i < map->cap; ++i) {
+	for (U64 i = 0; i < map->cap; ++i) {
 		if (map->keys[i]) {
 			map_put(&new_map, map->keys[i], map->vals[i]);
 		}
@@ -323,14 +323,14 @@ void map_grow(Map *map, size_t new_cap) {
 
 void map_put(Map *map, void *key, void *val) {
 	assert(key && val);
-	// TODO(shaw): currently enforcing less than 50% capacity, tweak this to be
+	// NOTE(shaw): currently enforcing less than 50% capacity, tweak this to be
 	// less extreme/conservative
 	if (2*map->len >= map->cap) {
 		map_grow(map, 2*map->cap);
 	}
 	assert(2*map->len < map->cap); 
 
-	size_t i = (size_t)ptr_hash(key);
+	U64 i = (U64)ptr_hash(key);
 
 	for (;;) {
 		i &= map->cap - 1;
@@ -358,10 +358,10 @@ void map_clear(Map *map) {
 void map_test(void) {
 	Map map = {0};
 	enum { n = 1024 * 1024 };
-	for (size_t i=0; i<n; ++i) {
+	for (U64 i=0; i<n; ++i) {
 		map_put(&map, (void*)(i+1), (void*)(i+2));
 	}
-	for (size_t i=0; i<n; ++i) {
+	for (U64 i=0; i<n; ++i) {
 		assert(map_get(&map, (void*)(i+1)) == (void*)(i+2));
 	}
 }
@@ -372,7 +372,7 @@ void map_test(void) {
 // ---------------------------------------------------------------------------
 typedef struct InternStr InternStr;
 struct InternStr {
-    size_t len;
+    U64 len;
 	InternStr *next;
     char str[];
 };
@@ -389,7 +389,7 @@ void init_str_intern(void) {
 }
 
 char *str_intern_range(char *start, char *end) {
-	size_t len = end - start;
+	U64 len = end - start;
 	uint64_t hash = str_hash_range(start, end);
 	void *key = (void*)(uintptr_t)(hash ? hash : 1);
 
@@ -561,6 +561,5 @@ void profile_end(void) {
 		printf("\n");
 	}
 }
-
 
 

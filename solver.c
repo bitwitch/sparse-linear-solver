@@ -1,4 +1,5 @@
 #define ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE 50
+#define TOLERANCE 0.000001
 
 static bool solve_steepest_descent(SparseMatrix *A, Vector *b, Vector *result) {
 	(void)A; (void)b; (void)result;
@@ -30,14 +31,12 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 
 	Vector *search_dir = vec_copy(scratch.arena, residual);
 	F64 delta = vec_dot(residual, residual);
-	// F64 tolerance = 0.000001 * delta;
-	F64 tolerance = 0.000001;
 
 	U64 pos = arena_pos(scratch.arena);
 
 	U64 i_max = 1000;
 	U64 i = 0;
-	for (; i < i_max && delta > tolerance; ++i) {
+	for (; i < i_max && delta > TOLERANCE; ++i) {
 		// q = A * search_dir
 		Vector *q = vec_alloc(scratch.arena, precision, vec_size);
 		sparse_mat_mul_vec(q, A, search_dir);
@@ -77,7 +76,7 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 #ifdef DIAGNOSTICS
 	printf("Solver Diagnostics:\n");
 	printf("\t%llu iterations\n", i);
-	if (delta <= tolerance) {
+	if (delta <= TOLERANCE) {
 		printf("\tconverged\n");
 	} else {
 		printf("did not converge\n");

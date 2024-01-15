@@ -60,20 +60,16 @@ static void parse_error(char *fmt, ...) {
 
 static void init_keywords(void) {
 	PROFILE_FUNCTION_BEGIN;
-    static bool first = true;
-    if (first) {
-		keyword_format = str_intern("format");
-		keyword_float = str_intern("float");
-		keyword_double = str_intern("double");
-		keyword_solver = str_intern("solver");
-		keyword_steepest_descent = str_intern("steepest_descent");
-		keyword_conjugate_directions = str_intern("conjugate_directions");
-		keyword_conjugate_gradients = str_intern("conjugate_gradients");
-		keyword_matrix = str_intern("matrix");
-		keyword_vector = str_intern("vector");
-		keyword_solution = str_intern("solution");
-	}
-	first = false;
+	keyword_format = str_intern("format");
+	keyword_float = str_intern("float");
+	keyword_double = str_intern("double");
+	keyword_solver = str_intern("solver");
+	keyword_steepest_descent = str_intern("steepest_descent");
+	keyword_conjugate_directions = str_intern("conjugate_directions");
+	keyword_conjugate_gradients = str_intern("conjugate_gradients");
+	keyword_matrix = str_intern("matrix");
+	keyword_vector = str_intern("vector");
+	keyword_solution = str_intern("solution");
 	PROFILE_FUNCTION_END;
 }
 
@@ -191,11 +187,11 @@ static bool match_token(TokenKind kind) {
 	return false;
 }
 
-static inline bool is_token(TokenKind kind) {
+static bool is_token(TokenKind kind) {
 	return token.kind == kind;
 }
 
-static inline bool is_token_name(char *name) {
+static bool is_token_name(char *name) {
 	return token.kind == TOKEN_NAME && token.name == str_intern(name);
 }
 
@@ -368,5 +364,4 @@ static ParseResult parse_input(Arena *arena, char *file_name) {
 	PROFILE_FUNCTION_END;
 	return result;
 }
-
 

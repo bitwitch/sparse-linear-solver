@@ -80,7 +80,7 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 #endif
 
 	PROFILE_FUNCTION_END;
-	return result;
+	return delta <= TOLERANCE;
 }
 
 // executes the solver specified by kind and places the solution into result 

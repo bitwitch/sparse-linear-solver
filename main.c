@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
 
 	Vector *solution = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
 	if (!solve(parse_result.solver, parse_result.matrix, parse_result.vector, solution)) {
-		fatal("Solver failed\n");
+		fatal("Solver did not to converge to a solution\n");
 	}
 
 	vec_print(solution);

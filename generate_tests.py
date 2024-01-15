@@ -59,7 +59,7 @@ if __name__ == "__main__":
     while cur_test < num_tests:
         vec_size = 10000
         max_iterations = 1000
-        path = f"{base_dir}/test_small_{cur_test}.txt"
+        path = f"{base_dir}/test_{cur_test}.txt"
 
         # pick an odd number of diagonals
         odd_min = 1

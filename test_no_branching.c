@@ -12,7 +12,6 @@ static bool simple_no_branch(SparseMatrix *A, Vector *b, Vector *result) {
 	return true;
 }
 
-
 static void vec_zero_no_branch(Vector *v) {
 	memset(v->valuesF32, 0, v->num_values * sizeof(*v->valuesF32));
 }
@@ -35,18 +34,23 @@ static Vector *vec_copy_no_branch(Arena *arena, Vector *v) {
 
 
 static void vec_sub_no_branch(Vector *result, Vector *a, Vector *b) {
+	check_vector_arguments("vec_sub_no_branch", result, a, b);
 	for (U64 i=0; i < a->num_values; ++i) {
 		result->valuesF32[i] = a->valuesF32[i] - b->valuesF32[i];
 	}
 }
 
 static void vec_add_no_branch(Vector *result, Vector *a, Vector *b) {
+	check_vector_arguments("vec_add_no_branch", result, a, b);
 	for (U64 i=0; i < a->num_values; ++i) {
 		result->valuesF32[i] = a->valuesF32[i] + b->valuesF32[i];
 	}
 }
 
 static void sparse_mat_mul_vec_no_branch(Vector *result, SparseMatrix *m, Vector *v) {
+	if (m->precision != v->precision || v->precision != result->precision) {
+		fatal("sparse_mat_mul_vec: arguments have different float precision");
+	}
 	if (v->num_values != result->num_values) {
 		fatal("sparse_mat_mul_vec: vector arguments have different sizes: result=%llu, v=%llu",
 			result->num_values, v->num_values);
@@ -75,8 +79,11 @@ static void sparse_mat_mul_vec_no_branch(Vector *result, SparseMatrix *m, Vector
 }
 
 static F64 vec_dot_no_branch(Vector *a, Vector *b) {
+	if (a->precision != b->precision) {
+		fatal("vec_dot_no_branch: vector arguments have different float precision");
+	}
 	if (a->num_values != b->num_values) {
-		fatal("vec_dot: vector arguments have different sizes: a=%llu, b=%llu",
+		fatal("vec_dot_no_branch: vector arguments have different sizes: a=%llu, b=%llu",
 			a->num_values, b->num_values);
 	}
 
@@ -89,6 +96,9 @@ static F64 vec_dot_no_branch(Vector *a, Vector *b) {
 }
 
 static void vec_scale_no_branch(Vector *result, Vector *v, F64 scalar) {
+	if (result->precision != v->precision) {
+		fatal("vec_scale: vector arguments have different float precision");
+	}
 	if (result->num_values != v->num_values) {
 		fatal("vec_scale: vector arguments have different sizes: result=%llu, v=%llu",
 			result->num_values, v->num_values);

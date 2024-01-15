@@ -242,7 +242,7 @@ static F64 seconds_from_cpu_time(F64 cpu_time, U64 cpu_timer_freq) {
 	return seconds;
 }
 
-static void test_branch_prediction(void) {
+static void test_branching(void) {
 	U64 num_iterations = 10000;
 	U64 min, max, sum;
 	U64 cpu_timer_freq = estimate_cpu_freq();
@@ -250,12 +250,12 @@ static void test_branch_prediction(void) {
 	TestFunc test_funcs[] = {
 		{ .name = "solver with branching", .func = solve_conjugate_gradients },
 		{ .name = "solver without branching", .func = solver_no_branch },
-		{ .name = "simple branch", .func = simple_branch },
-		{ .name = "simple no branch", .func = simple_no_branch },
+		// { .name = "simple branch", .func = simple_branch },
+		// { .name = "simple no branch", .func = simple_no_branch },
 	};
 
 	ArenaTemp scratch = scratch_begin(NULL, 0);
-	ParseResult parse_result = parse_input(scratch.arena, "tests/test_small_0.txt");
+	ParseResult parse_result = parse_input(scratch.arena, "tests/test_100.txt");
 	Vector *result = vec_alloc(scratch.arena, parse_result.vector->precision, parse_result.vector->num_values);
 
 	U64 pos = arena_pos(scratch.arena);
@@ -291,6 +291,66 @@ static void test_branch_prediction(void) {
 	scratch_end(scratch);
 }
 
+
+typedef struct {
+	char *name;
+	ParseResult input;
+	Vector *solution;
+} TestCase;
+
+static void test_float_vs_double(void) {
+	U64 num_iterations = 10000;
+	U64 min, max, sum;
+	U64 cpu_timer_freq = estimate_cpu_freq();
+	
+	ArenaTemp scratch = scratch_begin(NULL, 0);
+
+	ParseResult input_float = parse_input(scratch.arena, "tests/test_100.txt");
+	ParseResult input_double = parse_input(scratch.arena, "tests/doubles/test_100.txt");
+	Vector *result_float = vec_alloc(scratch.arena, input_float.vector->precision, input_float.vector->num_values);
+	Vector *result_double = vec_alloc(scratch.arena, input_double.vector->precision, input_double.vector->num_values);
+
+	TestCase tests[] = {
+		{ .name = "float inputs", .input = input_float, .solution = result_float },
+		{ .name = "double inputs", .input = input_double, .solution = result_double },
+	};
+
+	U64 pos = arena_pos(scratch.arena);
+
+	for (U64 i=0; i<ARRAY_COUNT(tests); ++i) {
+		min = UINT64_MAX;
+		max = 0;
+		sum = 0;
+		TestCase test = tests[i];
+		printf("\n--- %s ---\n", test.name);
+		for (U64 j=0; j<num_iterations; ++j) {
+
+			U64 ticks_start = read_cpu_timer();
+
+			if (!solve(test.input.solver, test.input.matrix, test.input.vector, test.solution)) {
+				printf("Solver failed to produce a solution\n");
+				exit(1);
+			}
+
+			U64 ticks_stop = read_cpu_timer();
+			U64 ticks = ticks_stop - ticks_start;
+
+			if (ticks < min) min = ticks;
+			if (ticks > max) max = ticks;
+			sum += ticks;
+
+			arena_pop_to(scratch.arena, pos);
+		}
+
+		F64 avg = (F64)sum / (F64)num_iterations;
+		printf("min: %llu (%fms)\n", min, 1000.0f * seconds_from_cpu_time((F64)min, cpu_timer_freq));
+		printf("max: %llu (%fms)\n", max, 1000.0f * seconds_from_cpu_time((F64)max, cpu_timer_freq));
+		printf("avg: %.0f (%fms)\n", avg, 1000.0f * seconds_from_cpu_time(avg, cpu_timer_freq));
+	}
+
+	scratch_end(scratch);
+}
+
 int main(int argc, char **argv) {
 	(void)argc; (void)argv;
 	
@@ -300,7 +360,9 @@ int main(int argc, char **argv) {
 
 	// test_linear_algebra();
 	// test_conjugate_gradients();
-	test_branch_prediction();
+
+	test_branching();
+	test_float_vs_double();
 
 	profile_end();
 	return 0;

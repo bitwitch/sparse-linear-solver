@@ -381,10 +381,8 @@ static Arena *intern_arena;
 static Map interns;
 
 void init_str_intern(void) {
-	static bool first = true;
-	if (first) {
+	if (intern_arena == NULL) {
 		intern_arena = arena_alloc();
-		first = false;
 	}
 }
 

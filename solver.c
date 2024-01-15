@@ -1,3 +1,4 @@
+#define MAX_ITERATIONS 1000
 #define ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE 50
 #define TOLERANCE 0.000001
 
@@ -13,6 +14,9 @@ static bool solve_conjugate_directions(SparseMatrix *A, Vector *b, Vector *resul
 	return false;
 }
 
+// see: https://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf
+// page 50 for algorithm reference
+//
 // result and b must be distinct vectors
 static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result) {
 	PROFILE_FUNCTION_BEGIN;
@@ -24,7 +28,6 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 	// initial guess for solution, start at zero
 	vec_zero(result);
 
-	// residual = b - A * x
 	Vector *residual = vec_alloc(scratch.arena, precision, vec_size);
 	sparse_mat_mul_vec(residual, A, result);
 	vec_sub(residual, b, residual);
@@ -34,10 +37,8 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 
 	U64 pos = arena_pos(scratch.arena);
 
-	U64 i_max = 1000;
-	U64 i = 0;
-	for (; i < i_max && delta > TOLERANCE; ++i) {
-		// q = A * search_dir
+	U64 i;
+	for (i = 0; i < MAX_ITERATIONS && delta > TOLERANCE; ++i) {
 		Vector *q = vec_alloc(scratch.arena, precision, vec_size);
 		sparse_mat_mul_vec(q, A, search_dir);
 
@@ -45,17 +46,13 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 
 		Vector *tmp = vec_alloc(scratch.arena, precision, vec_size);
 		
-		// result = result + step_amount * search_dir
 		vec_scale(tmp, search_dir, step_amount);
 		vec_add(result, result, tmp);
 
 		if (((i+1) % ITERATIONS_BEFORE_RESIDUAL_RECOMPUTE) == 0) {
-			// residual = b - A * x
 			sparse_mat_mul_vec(tmp, A, result);
 			vec_sub(residual, b, tmp);
-
 		} else {
-			// residual = residual - step_amount * q
 			vec_scale(tmp, q, step_amount);
 			vec_sub(residual, residual, tmp);
 		}
@@ -64,7 +61,6 @@ static bool solve_conjugate_gradients(SparseMatrix *A, Vector *b, Vector *result
 		delta = vec_dot(residual, residual);
 		F64 beta = delta / delta_old;
 
-		// search_dir = residual + beta * search_dir
 		vec_scale(tmp, search_dir, beta);
 		vec_add(search_dir, residual, tmp);
 
@@ -96,7 +92,9 @@ static bool solve(SolverKind kind, SparseMatrix *A, Vector *v, Vector *result) {
 		case SOLVER_STEEPEST_DESCENT:     success = solve_steepest_descent(A, v, result);     break;
 		case SOLVER_CONJUGATE_DIRECTIONS: success = solve_conjugate_directions(A, v, result); break;
 		case SOLVER_CONJUGATE_GRADIENTS:  success = solve_conjugate_gradients(A, v, result);  break;
-		default: assert(0); break;
+		default:
+			fatal("solve: unknown solver kind (enum value = %d)", kind);
+			break;
 	}
 	PROFILE_FUNCTION_END;
 	return success;

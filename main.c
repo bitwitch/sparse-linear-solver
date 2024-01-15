@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 		fatal("Solver failed\n");
 	}
 
-	// vec_print(solution);
+	vec_print(solution);
 
 	scratch_end(scratch);
 

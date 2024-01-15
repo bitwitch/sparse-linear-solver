@@ -1,17 +1,3 @@
-static bool simple_branch(SparseMatrix *A, Vector *b, Vector *result) {
-	(void)A; (void)b;
-	if (result->precision == PRECISION_F32) {
-		return true;
-	} else {
-		return false;
-	}
-}
-
-static bool simple_no_branch(SparseMatrix *A, Vector *b, Vector *result) {
-	(void)A; (void)b; (void)result;
-	return true;
-}
-
 static void vec_zero_no_branch(Vector *v) {
 	memset(v->valuesF32, 0, v->num_values * sizeof(*v->valuesF32));
 }

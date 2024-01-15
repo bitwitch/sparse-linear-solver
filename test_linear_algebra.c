@@ -250,8 +250,6 @@ static void test_branching(void) {
 	TestFunc test_funcs[] = {
 		{ .name = "solver with branching", .func = solve_conjugate_gradients },
 		{ .name = "solver without branching", .func = solver_no_branch },
-		// { .name = "simple branch", .func = simple_branch },
-		// { .name = "simple no branch", .func = simple_no_branch },
 	};
 
 	ArenaTemp scratch = scratch_begin(NULL, 0);
@@ -359,6 +357,7 @@ int main(int argc, char **argv) {
 	init_scratch();
 
 	// test_linear_algebra();
+
 	test_conjugate_gradients();
 
 	// test_branching();

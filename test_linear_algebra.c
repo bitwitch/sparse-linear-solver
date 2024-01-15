@@ -359,10 +359,10 @@ int main(int argc, char **argv) {
 	init_scratch();
 
 	// test_linear_algebra();
-	// test_conjugate_gradients();
+	test_conjugate_gradients();
 
-	test_branching();
-	test_float_vs_double();
+	// test_branching();
+	// test_float_vs_double();
 
 	profile_end();
 	return 0;

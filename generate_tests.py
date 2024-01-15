@@ -1,4 +1,5 @@
 import os
+import sys
 
 from scipy.sparse import diags
 from scipy.sparse.linalg import cg
@@ -50,14 +51,19 @@ def generate_test(path, diag_values, vec_size, max_iterations) -> bool:
 if __name__ == "__main__":
     rng = np.random.default_rng()
 
-    base_dir = "tests"
+    if len(sys.argv) < 4:
+        print(f"Usage: python {sys.argv[0]} [output_directory] [num_tests] [vec_size]")
+        sys.exit(1)
+
+    base_dir = sys.argv[1]
+    num_tests = int(sys.argv[2])
+    vec_size = int(sys.argv[3])
+
     os.makedirs(base_dir, exist_ok=True)
 
-    num_tests = 1000
     cur_test = 0
     print(f"Generating {num_tests} tests...")
     while cur_test < num_tests:
-        vec_size = 10000
         max_iterations = 1000
         path = f"{base_dir}/test_{cur_test}.txt"
 

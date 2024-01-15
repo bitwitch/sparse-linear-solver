@@ -1,5 +1,5 @@
 ## Sparse Linear Solver
-Usage: linear\_solver.exe FILENAME
+Usage: `linear\_solver.exe FILENAME`
 
 ### Input File Format
 format: [float, double]  

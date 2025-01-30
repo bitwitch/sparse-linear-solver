@@ -3,7 +3,7 @@ Usage: `linear_solver.exe FILENAME`
 
 ### Input File Format
 format: [float, double]  
-solver: [conjugate\_gradients, conjugate\_directions, steepes\_descent]  
+solver: [conjugate\_gradients, conjugate\_directions, steepest\_descent]  
 matrix: [number of nonzero entries]  
 [row] [col] [val]  
 [row] [col] [val]  
